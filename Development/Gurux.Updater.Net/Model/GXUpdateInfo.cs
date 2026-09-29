@@ -32,7 +32,7 @@
 
 using Gurux.Updater.Enums;
 
-namespace Gurux.Updater;
+namespace Gurux.Updater.Model;
 
 /// <summary>
 /// Describes the installed version and the latest GitHub release of an update target.

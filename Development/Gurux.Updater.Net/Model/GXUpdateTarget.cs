@@ -32,7 +32,7 @@
 
 using Gurux.Updater.Enums;
 
-namespace Gurux.Updater;
+namespace Gurux.Updater.Model;
 
 /// <summary>
 /// Specifies an application or add-in to check for updates.

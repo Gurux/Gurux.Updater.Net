@@ -30,9 +30,7 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
-namespace Gurux.Updater;
+namespace Gurux.Updater.Model;
 
 /// <summary>
 /// Describes a release asset available for download.

@@ -32,7 +32,7 @@
 
 using System.Text.Json;
 
-namespace Gurux.Updater;
+namespace Gurux.Updater.Services;
 
 /// <summary>
 /// Polls HTTP health and version endpoints until the application is ready.

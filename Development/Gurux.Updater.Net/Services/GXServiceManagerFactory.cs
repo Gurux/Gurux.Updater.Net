@@ -30,7 +30,7 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-namespace Gurux.Updater;
+namespace Gurux.Updater.Services;
 /// <summary>
 /// Creates a service manager for the current operating system.
 /// </summary>

@@ -31,6 +31,8 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Enums;
+using Gurux.Updater.Model;
+using Gurux.Updater.Services;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Headers;

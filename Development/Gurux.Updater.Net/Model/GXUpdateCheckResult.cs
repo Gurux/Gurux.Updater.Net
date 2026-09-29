@@ -32,7 +32,7 @@
 
 using Gurux.Updater.Enums;
 
-namespace Gurux.Updater;
+namespace Gurux.Updater.Model;
 
 /// <summary>
 /// Contains the update information or error for one target in a batch check.
