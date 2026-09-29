@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Gurux.Updater.Net/Gurux.Updater.Net.csproj" />
+  <Project Path="Gurux.Updater.Tool/Gurux.Updater.Tool.csproj" />
+</Solution>

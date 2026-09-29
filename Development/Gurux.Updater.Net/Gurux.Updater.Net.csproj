@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup Label="MultilingualAppToolkit">
+        <!-- MAT uses DotNetStandard for SDK projects but does not recognize net10.0 automatically. -->
+        <MATProjectType>DotNetStandard</MATProjectType>
+    </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <PackageId>Gurux.Updater.Net</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>Gurux Ltd</Authors>
+        <Company>Gurux Ltd</Company>
+        <Copyright>Copyright (c) 1998-2026 Gurux Ltd. All rights reserved.</Copyright>
+        <PackageProjectUrl>www.gurux.fi/Gurux.Updater.Net</PackageProjectUrl>
+        <Description>Reusable update library for checking, downloading and installing GitHub Release based updates for Gurux applications and add-ins.</Description>
+        <Version Condition=" '$(BUILD_BUILDNUMBER)' == '' ">0.0.1-local</Version>
+        <Version Condition=" '$(BUILD_BUILDNUMBER)' != '' ">$(BUILD_BUILDNUMBER)</Version>
+        <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+        <RepositoryUrl>https://github.com/Gurux/Gurux.Updater.Net</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageTags>Gurux updater.</PackageTags>
+        <PackageId>Gurux.Updater.Net</PackageId>
+        <ApplicationIcon>..\Gurux.Updater.ico</ApplicationIcon>
+        <PlatformTarget>AnyCPU</PlatformTarget>
+        <PackageLicenseExpression>GPL-2.0-only</PackageLicenseExpression>
+        <PackageIcon>Gurux.Updater.png</PackageIcon>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    </PropertyGroup>
+    <ItemGroup>
+        <None Include="../Gurux.Updater.png" Pack="true" PackagePath="\" />
+        <None Include="../../README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
+</Project>
