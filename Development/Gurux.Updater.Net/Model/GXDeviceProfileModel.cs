@@ -35,43 +35,26 @@ using System.Text.Json.Serialization;
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Represents a device model in the device profile index.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXDeviceProfileModel
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the display name of the model.
     /// </summary>
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; init; } = string.Empty;
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
     /// <summary>
-    /// Gets the URL of the GitHub release page.
+    /// Gets profile entries that apply to this model without a specific device version.
+    /// These entries are independent of any entry in <see cref="Versions"/> and are
+    /// never inherited by version-specific profiles.
     /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    [JsonPropertyName("settings")]
+    public List<GXDeviceProfileEntry> Settings { get; init; } = [];
     /// <summary>
-    /// Gets the release notes supplied by GitHub.
+    /// Gets the device versions or variants for this model.
+    /// Each version maintains its own independent profile list.
     /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is a draft.
-    /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is marked as a prerelease.
-    /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
-    /// <summary>
-    /// Gets the release publish time reported by GitHub.
-    /// </summary>
-    [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
-    /// <summary>
-    /// Gets the downloadable assets attached to the release.
-    /// </summary>
-    [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    [JsonPropertyName("versions")]
+    public List<GXDeviceProfileVersion> Versions { get; init; } = [];
 }

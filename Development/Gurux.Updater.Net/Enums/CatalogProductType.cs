@@ -30,33 +30,25 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
-namespace Gurux.Updater.Model;
+namespace Gurux.Updater.Enums;
 
 /// <summary>
-/// Describes a release asset available for download.
+/// Identifies a product type in the update catalog.
 /// </summary>
-public sealed class GXUpdateAsset
+public enum CatalogProductType
 {
     /// <summary>
-    /// Gets the release asset file name.
+    /// A standalone application.
     /// </summary>
-    [JsonPropertyName("name")]
-    public string Name { get; init; } = string.Empty;
+    Application,
+ 
     /// <summary>
-    /// Gets the URL used to download the release asset.
+    /// A module.
     /// </summary>
-    [JsonPropertyName("downloadUrl")]
-    public string DownloadUrl { get; init; } = string.Empty;
+    Module,
+ 
     /// <summary>
-    /// Gets the asset size in bytes.
+    /// An agent.
     /// </summary>
-    [JsonPropertyName("size")]
-    public long Size { get; init; }
-    /// <summary>
-    /// Gets the optional asset digest.
-    /// </summary>
-    [JsonPropertyName("digest")]
-    public string? Digest { get; init; }
+    Agent
 }

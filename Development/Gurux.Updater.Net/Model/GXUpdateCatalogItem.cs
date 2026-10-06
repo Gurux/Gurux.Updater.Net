@@ -30,48 +30,44 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
+using Gurux.Updater.Enums;
 using System.Text.Json.Serialization;
 
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Represents a product entry in the update catalog.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXUpdateCatalogItem
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the unique product identifier.
     /// </summary>
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; init; } = string.Empty;
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
     /// <summary>
-    /// Gets the URL of the GitHub release page.
+    /// Gets the catalog product type.
     /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    [JsonPropertyName("type")]
+    public GXCatalogProductType Type { get; init; }
     /// <summary>
-    /// Gets the release notes supplied by GitHub.
+    /// Gets the display name of the product.
     /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
+    [JsonPropertyName("name")]
+    public string? Name { get; init; }
     /// <summary>
-    /// Gets a value indicating whether the release is a draft.
+    /// Gets the product description.
     /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
     /// <summary>
-    /// Gets a value indicating whether the release is marked as a prerelease.
+    /// Gets the backing GitHub repository in owner/name format.
     /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
+    [JsonPropertyName("repository")]
+    public string? Repository { get; init; }
     /// <summary>
-    /// Gets the release publish time reported by GitHub.
+    /// Gets the releases selected for this catalog item.
     /// </summary>
-    [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
-    /// <summary>
-    /// Gets the downloadable assets attached to the release.
-    /// </summary>
-    [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    [JsonPropertyName("releases")]
+    public List<GXUpdateRelease> Releases { get; init; } = [];
 }

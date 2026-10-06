@@ -30,6 +30,8 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
+using Gurux.Updater.Model;
+
 namespace Gurux.Updater.Tool;
 
 /// <summary>
@@ -94,6 +96,22 @@ public sealed class GXUpdaterOptions
     /// </summary>
     public int StartupTimeout { get; private set; } = 60;
     /// <summary>
+    /// Gets a value indicating whether release listing is requested.
+    /// </summary>
+    public bool ListReleases { get; private set; }
+    /// <summary>List available manufacturer settings from the DeviceProfiles catalog index.</summary>
+    public bool ListManufacturerSettings { get; private set; }
+    /// <summary>HTTPS manufacturer index used for settings listing.</summary>
+    public Uri CatalogUrl { get; private set; } = new("https://gurux.github.io/Gurux.DLMS.DeviceProfiles/manufacturers.json");
+    /// <summary>
+    /// Gets the maximum number of releases to return; the default is five.
+    /// </summary>
+    public int Count { get; private set; } = 5;
+    /// <summary>
+    /// Gets a value indicating whether prereleases are included when listing releases.
+    /// </summary>
+    public bool IncludePrereleases { get; private set; }
+    /// <summary>
     /// Gets a value indicating whether check results are written as JSON and download progress is suppressed.
     /// </summary>
     public bool Json { get; private set; }
@@ -112,6 +130,9 @@ public sealed class GXUpdaterOptions
     public static GXUpdaterOptions Parse(string[] args)
     {
         GXUpdaterOptions result = new();
+        bool countSpecified = false;
+        bool prereleaseSpecified = false;
+
         if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
         {
             result.ShowHelp = true;
@@ -121,7 +142,6 @@ public sealed class GXUpdaterOptions
         for (int pos = 1; pos < args.Length; ++pos)
         {
             string key = args[pos];
-            // Reads the next command-line argument or throws when the current option has no value.
             string Next()
             {
                 if (++pos >= args.Length)
@@ -145,11 +165,82 @@ public sealed class GXUpdaterOptions
                 case "--version-url": result.VersionUrl = new Uri(Next()); break;
                 case "--wait-seconds": result.WaitSeconds = int.Parse(Next()); break;
                 case "--startup-timeout": result.StartupTimeout = int.Parse(Next()); break;
+                case "--list-manufacturer-settings": result.ListManufacturerSettings = true; break;
+                case "--catalog-url": result.CatalogUrl = new Uri(Next(), UriKind.Absolute); break;
+                case "--list-releases": result.ListReleases = true; break;
+                case "--count":
+                    result.Count = int.Parse(Next());
+                    countSpecified = true;
+                    break;
+                case "--prerelease":
+                    result.IncludePrereleases = true;
+                    prereleaseSpecified = true;
+                    break;
                 case "--json": result.Json = true; break;
                 case "--no-restart": result.NoRestart = true; break;
                 default: throw new ArgumentException($"Unknown option '{key}'.");
             }
         }
+
+        if (result.Command != "check" && result.Command != "update")
+        {
+            throw new ArgumentException($"Unknown command '{result.Command}'.");
+        }
+        if (result.ListManufacturerSettings)
+        {
+            if (result.Command != "check" || result.ListReleases || result.Targets != null || result.Application != null ||
+                !string.IsNullOrEmpty(result.Repository) || countSpecified || prereleaseSpecified || result.AssetPattern != null)
+                throw new ArgumentException("--list-manufacturer-settings requires check and cannot be combined with application, targets or release options.");
+            if (result.CatalogUrl.Scheme != "https")
+                throw new ArgumentException("--catalog-url must be an absolute HTTPS manufacturer index URL.");
+            return result;
+        }
+        if (result.Command == "update" && result.ListReleases)
+        {
+            throw new ArgumentException("--list-releases is supported by the check command only.");
+        }
+        if (result.Command == "update" && countSpecified)
+        {
+            throw new ArgumentException("--count is supported by --list-releases only.");
+        }
+        if (result.Command == "update" && prereleaseSpecified)
+        {
+            throw new ArgumentException("--prerelease is supported by --list-releases only.");
+        }
+        if (!result.ListReleases && countSpecified)
+        {
+            throw new ArgumentException("--count is supported by --list-releases only.");
+        }
+        if (!result.ListReleases && prereleaseSpecified)
+        {
+            throw new ArgumentException("--prerelease is supported by --list-releases only.");
+        }
+        if (result.ListReleases && !string.IsNullOrWhiteSpace(result.Targets))
+        {
+            throw new ArgumentException("--targets is not supported by --list-releases.");
+        }
+        if (result.Command == "update" && !string.IsNullOrWhiteSpace(result.Targets))
+        {
+            throw new ArgumentException("--targets is supported by the check command. Update targets individually.");
+        }
+        if (result.MaxConcurrency < 1)
+        {
+            throw new ArgumentException("--max-concurrency must be greater than zero.");
+        }
+        if (result.Count < 1)
+        {
+            throw new ArgumentException("--count must be greater than zero.");
+        }
+
+        if (result.ListReleases)
+        {
+            if (string.IsNullOrWhiteSpace(result.Repository) || !result.Repository.Contains('/'))
+            {
+                throw new ArgumentException("--repository owner/name is required.");
+            }
+            return result;
+        }
+
         if (result.Command == "update" || string.IsNullOrWhiteSpace(result.Targets))
         {
             if (string.IsNullOrWhiteSpace(result.Application))
@@ -160,14 +251,6 @@ public sealed class GXUpdaterOptions
             {
                 throw new ArgumentException("--repository owner/name is required.");
             }
-        }
-        if (result.Command == "update" && !string.IsNullOrWhiteSpace(result.Targets))
-        {
-            throw new ArgumentException("--targets is supported by the check command. Update targets individually.");
-        }
-        if (result.MaxConcurrency < 1)
-        {
-            throw new ArgumentException("--max-concurrency must be greater than zero.");
         }
         return result;
     }
@@ -180,6 +263,8 @@ Gurux.Updater (.NET 10)
 
 Usage:
   Gurux.Updater check  --application <path> --repository <owner/name> [options]
+  Gurux.Updater check  --repository <owner/name> --list-releases [options]
+  Gurux.Updater check  --list-manufacturer-settings [--catalog-url <url>] [--json]
   Gurux.Updater check  --targets <targets.json> [options]
   Gurux.Updater update --application <path> --repository <owner/name> [options]
 
@@ -187,6 +272,11 @@ Options:
   --targets <file>           Check multiple applications/add-ins from a JSON file.
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.
+  --list-manufacturer-settings List available profiles (no profile downloads).
+  --catalog-url <url>        HTTPS manufacturer index URL.
+  --list-releases            List recent releases. Default count: 5.
+  --count <n>                Number of releases to list. Default: 5.
+  --prerelease               Include prereleases when listing releases.
   --process-id <pid>         Wait for this process to exit before installing.
   --service <name>           Windows Service or systemd service to stop/start.
   --health-url <url>         Wait for HTTP success after restart.

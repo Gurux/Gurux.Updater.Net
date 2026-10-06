@@ -33,16 +33,24 @@
 namespace Gurux.Updater.Enums;
 
 /// <summary>
-/// Identifies whether an update target is an application or an add-in.
+/// Identifies a product type in the update catalog.
 /// </summary>
-public enum UpdateTargetType
+public enum GXCatalogProductType
 {
     /// <summary>
     /// A standalone application.
     /// </summary>
     Application,
     /// <summary>
-    /// An add-in loaded by a host application.
+    /// A loadable module.
     /// </summary>
-    AddIn
+    Module,
+    /// <summary>
+    /// An agent.
+    /// </summary>
+    Agent,
+    /// <summary>
+    /// A configuration bundle such as a device profile index.
+    /// </summary>
+    Configuration
 }

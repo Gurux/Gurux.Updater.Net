@@ -43,6 +43,7 @@ namespace Gurux.Updater.Services;
 /// </summary>
 public sealed class GXGitHubUpdateService
 {
+    private const int ReleasePageSize = 100;
     private readonly HttpClient _client;
 
     /// <summary>
@@ -58,13 +59,17 @@ public sealed class GXGitHubUpdateService
     /// </summary>
     public async Task<GXUpdateInfo> CheckAsync(GXUpdateTarget target, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!TryGetRepositoryParts(target.Repository, out _, out _))
+        {
+            throw new ArgumentException("Repository owner/name is required.", nameof(target));
+        }
+
         string current = GetCurrentVersion(target);
-        using HttpResponseMessage response = await _client.GetAsync(
-            $"https://api.github.com/repos/{target.Repository}/releases/latest", cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        GXGitHubRelease release = await JsonSerializer.DeserializeAsync<GXGitHubRelease>(stream, cancellationToken: cancellationToken)
-            ?? throw new InvalidDataException("GitHub returned an empty release response.");
+        GXGitHubRelease release = await GetJsonAsync<GXGitHubRelease>(
+            $"https://api.github.com/repos/{target.Repository}/releases/latest",
+            "GitHub returned an empty release response.",
+            cancellationToken);
         string latest = NormalizeVersion(release.TagName);
         GXGitHubAsset? asset = SelectAsset(release.Assets, target.AssetPattern);
         return new GXUpdateInfo
@@ -79,13 +84,74 @@ public sealed class GXGitHubUpdateService
             ReleaseNotes = release.Body,
             ReleaseUrl = release.HtmlUrl,
             IsContainer = IsContainer(),
-            Asset = asset is null ? null : new GXUpdateAsset
-            {
-                Name = asset.Name,
-                DownloadUrl = asset.BrowserDownloadUrl,
-                Size = asset.Size
-            }
+            Asset = CreateUpdateAsset(asset)
         };
+    }
+
+    /// <summary>
+    /// Gets the newest published GitHub releases for the specified target without reading the installed version.
+    /// </summary>
+    /// <param name="target">The update target whose repository and asset pattern are used.</param>
+    /// <param name="count">The maximum number of releases to return after filtering.</param>
+    /// <param name="includePrereleases">True to include prereleases; false to return stable releases only.</param>
+    /// <param name="cancellationToken">A token used to cancel the operation.</param>
+    /// <returns>The newest published releases after filtering drafts and optional prereleases.</returns>
+    public async Task<IReadOnlyList<GXUpdateRelease>> GetReleasesAsync(
+        GXUpdateTarget target,
+        int count = 10,
+        bool includePrereleases = false,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateReleaseQueryTarget(target, count);
+
+        List<GXUpdateRelease> releases = [];
+        int page = 1;
+        string repository = target.Repository!;
+
+        while (true)
+        {
+            List<GXGitHubRelease> pageReleases = await GetJsonAsync<List<GXGitHubRelease>>(
+                BuildReleasesRequestUri(repository, page),
+                "GitHub returned an empty releases response.",
+                cancellationToken);
+
+            if (pageReleases.Count == 0)
+            {
+                break;
+            }
+
+            foreach (GXGitHubRelease release in pageReleases)
+            {
+                if (release.Draft)
+                {
+                    continue;
+                }
+
+                if (!includePrereleases && release.Prerelease)
+                {
+                    continue;
+                }
+
+                GXGitHubAsset? asset = SelectAsset(release.Assets, target.AssetPattern);
+                releases.Add(new GXUpdateRelease
+                {
+                    Version = NormalizeListedVersion(release.TagName),
+                    TagName = release.TagName,
+                    IsPrerelease = release.Prerelease,
+                    PublishedAt = release.PublishedAt,
+                    ReleaseNotes = release.Body,
+                    ReleaseUrl = release.HtmlUrl,
+                    Asset = CreateUpdateAsset(asset)
+                });
+            }
+
+            ++page;
+        }
+
+        return releases
+            .OrderByDescending(x => x.PublishedAt ?? DateTimeOffset.MinValue)
+            .Take(count)
+            .ToArray();
     }
 
     /// <summary>
@@ -157,6 +223,27 @@ public sealed class GXGitHubUpdateService
             !target.Repository.Contains('/'))
         {
             throw new ArgumentException($"Repository owner/name is required for '{target.Name}'.");
+        }
+    }
+
+    /// <summary>
+    /// Validates the target and count for release discovery.
+    /// </summary>
+    private static void ValidateReleaseQueryTarget(GXUpdateTarget target, int count)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (count < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count));
+        }
+
+        if (!TryGetRepositoryParts(target.Repository, out _, out _))
+        {
+            throw new ArgumentException(
+                string.IsNullOrWhiteSpace(target.Name)
+                    ? "Repository owner/name is required."
+                    : $"Repository owner/name is required for '{target.Name}'.",
+                nameof(target));
         }
     }
 
@@ -267,6 +354,21 @@ public sealed class GXGitHubUpdateService
     }
 
     /// <summary>
+    /// Creates a public update asset from the GitHub asset metadata.
+    /// </summary>
+    private static GXUpdateAsset? CreateUpdateAsset(GXGitHubAsset? asset)
+    {
+        return asset is null
+            ? null
+            : new GXUpdateAsset
+            {
+                Name = asset.Name,
+                DownloadUrl = asset.BrowserDownloadUrl,
+                Size = asset.Size
+            };
+    }
+
+    /// <summary>
     /// Determines whether the asterisk-separated pattern parts occur in order, ignoring case.
     /// </summary>
     private static bool WildcardMatch(string value, string pattern)
@@ -318,5 +420,64 @@ public sealed class GXGitHubUpdateService
         string version = value.Trim().TrimStart('v', 'V');
         int dash = version.IndexOf('-');
         return dash >= 0 ? version[..dash] : version;
+    }
+
+    /// <summary>
+    /// Trims whitespace and leading v characters while preserving any prerelease suffix.
+    /// </summary>
+    private static string NormalizeListedVersion(string value)
+    {
+        return value.Trim().TrimStart('v', 'V');
+    }
+
+    /// <summary>
+    /// Sends a GET request and deserializes the JSON response body.
+    /// </summary>
+    private async Task<T> GetJsonAsync<T>(
+        string requestUri,
+        string emptyResponseMessage,
+        CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await _client.GetAsync(requestUri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        T? value = await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: cancellationToken);
+        return value ?? throw new InvalidDataException(emptyResponseMessage);
+    }
+
+    /// <summary>
+    /// Builds the GitHub releases request URI for the specified repository page.
+    /// </summary>
+    private static string BuildReleasesRequestUri(string repository, int page)
+    {
+        _ = TryGetRepositoryParts(repository, out string owner, out string name);
+        return $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(name)}/releases?per_page={ReleasePageSize}&page={page}";
+    }
+
+    /// <summary>
+    /// Parses an owner/name repository value.
+    /// </summary>
+    private static bool TryGetRepositoryParts(string? repository, out string owner, out string name)
+    {
+        owner = string.Empty;
+        name = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(repository))
+        {
+            return false;
+        }
+
+        string[] parts = repository.Split('/', StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 ||
+            string.IsNullOrWhiteSpace(parts[0]) ||
+            string.IsNullOrWhiteSpace(parts[1]))
+        {
+            return false;
+        }
+
+        owner = parts[0];
+        name = parts[1];
+        return true;
     }
 }

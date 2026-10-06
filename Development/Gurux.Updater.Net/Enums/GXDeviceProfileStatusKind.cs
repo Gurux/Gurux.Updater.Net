@@ -30,33 +30,23 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
-namespace Gurux.Updater.Model;
+namespace Gurux.Updater.Enums;
 
 /// <summary>
-/// Describes a release asset available for download.
+/// Describes the comparison result between an installed device profile and the index.
 /// </summary>
-public sealed class GXUpdateAsset
+public enum GXDeviceProfileStatusKind
 {
     /// <summary>
-    /// Gets the release asset file name.
+    /// The installed SHA-256 matches the index; content is unchanged.
     /// </summary>
-    [JsonPropertyName("name")]
-    public string Name { get; init; } = string.Empty;
+    Unchanged,
     /// <summary>
-    /// Gets the URL used to download the release asset.
+    /// The index entry has a different SHA-256; updated content is available.
     /// </summary>
-    [JsonPropertyName("downloadUrl")]
-    public string DownloadUrl { get; init; } = string.Empty;
+    Changed,
     /// <summary>
-    /// Gets the asset size in bytes.
+    /// The installed profile ID is not present in the current index.
     /// </summary>
-    [JsonPropertyName("size")]
-    public long Size { get; init; }
-    /// <summary>
-    /// Gets the optional asset digest.
-    /// </summary>
-    [JsonPropertyName("digest")]
-    public string? Digest { get; init; }
+    NotInIndex
 }

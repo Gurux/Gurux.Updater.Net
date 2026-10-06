@@ -30,48 +30,29 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
+using Gurux.Updater.Enums;
 
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Describes the update status of an installed device profile compared with the index.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXDeviceProfileStatus
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the identifier of the installed profile.
     /// </summary>
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; init; } = string.Empty;
+    public string Id { get; init; } = string.Empty;
     /// <summary>
-    /// Gets the URL of the GitHub release page.
+    /// Gets the comparison result.
     /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    public GXDeviceProfileStatusKind Kind { get; init; }
     /// <summary>
-    /// Gets the release notes supplied by GitHub.
+    /// Gets the SHA-256 of the installed file as reported by the host application.
     /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
+    public string InstalledSha256 { get; init; } = string.Empty;
     /// <summary>
-    /// Gets a value indicating whether the release is a draft.
+    /// Gets the corresponding index entry, or null when the profile is not in the index.
     /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is marked as a prerelease.
-    /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
-    /// <summary>
-    /// Gets the release publish time reported by GitHub.
-    /// </summary>
-    [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
-    /// <summary>
-    /// Gets the downloadable assets attached to the release.
-    /// </summary>
-    [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    public GXDeviceProfileEntry? Entry { get; init; }
 }

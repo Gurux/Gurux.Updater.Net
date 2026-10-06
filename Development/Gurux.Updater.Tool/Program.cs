@@ -62,6 +62,13 @@ internal static class Program
                 Console.WriteLine(GXUpdaterOptions.HelpText);
                 return 0;
             }
+            if (options.ListManufacturerSettings)
+            {
+                using var catalogClient = new HttpClient();
+                catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                await GXManufacturerSettingsCommand.RunAsync(catalogClient, options, Console.Out);
+                return 0;
+            }
             using HttpClient client = CreateHttpClient(options.Token);
             GXGitHubUpdateService service = new(client);
             return options.Command switch

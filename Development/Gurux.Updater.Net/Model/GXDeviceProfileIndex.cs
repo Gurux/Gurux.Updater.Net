@@ -35,43 +35,23 @@ using System.Text.Json.Serialization;
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Represents the root of a device profile index document.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXDeviceProfileIndex
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the schema version of the index document.
     /// </summary>
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; init; } = string.Empty;
+    [JsonPropertyName("schemaVersion")]
+    public int SchemaVersion { get; init; }
     /// <summary>
-    /// Gets the URL of the GitHub release page.
+    /// Gets the time when the index was generated.
     /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    [JsonPropertyName("generatedAt")]
+    public DateTimeOffset? GeneratedAt { get; init; }
     /// <summary>
-    /// Gets the release notes supplied by GitHub.
+    /// Gets the manufacturer entries in the index.
     /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is a draft.
-    /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is marked as a prerelease.
-    /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
-    /// <summary>
-    /// Gets the release publish time reported by GitHub.
-    /// </summary>
-    [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
-    /// <summary>
-    /// Gets the downloadable assets attached to the release.
-    /// </summary>
-    [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    [JsonPropertyName("manufacturers")]
+    public List<GXDeviceProfileManufacturer> Manufacturers { get; init; } = [];
 }

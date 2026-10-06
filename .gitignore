@@ -54,3 +54,4 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 /Development/.vs
+/Development/Gurux.Updater.Net.Tests

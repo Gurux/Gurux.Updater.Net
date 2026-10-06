@@ -35,43 +35,54 @@ using System.Text.Json.Serialization;
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Describes a release available for an update target.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXUpdateRelease
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the normalized version while preserving any prerelease label.
     /// </summary>
-    [JsonPropertyName("tag_name")]
+    [JsonPropertyName("version")]
+    public string Version { get; init; } = string.Empty;
+  
+    /// <summary>
+    /// Gets the original source tag name.
+    /// </summary>
+    [JsonPropertyName("tagName")]
     public string TagName { get; init; } = string.Empty;
-    /// <summary>
-    /// Gets the URL of the GitHub release page.
-    /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
-    /// <summary>
-    /// Gets the release notes supplied by GitHub.
-    /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
-    /// <summary>
-    /// Gets a value indicating whether the release is a draft.
-    /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
+ 
     /// <summary>
     /// Gets a value indicating whether the release is marked as a prerelease.
     /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
+    [JsonPropertyName("isPrerelease")]
+    public bool IsPrerelease { get; init; }
+
     /// <summary>
-    /// Gets the release publish time reported by GitHub.
+    /// Gets the publish time of the release.
     /// </summary>
-    [JsonPropertyName("published_at")]
+    [JsonPropertyName("publishedAt")]
     public DateTimeOffset? PublishedAt { get; init; }
+ 
     /// <summary>
-    /// Gets the downloadable assets attached to the release.
+    /// Gets the release notes.
+    /// </summary>
+    [JsonPropertyName("releaseNotes")]
+    public string? ReleaseNotes { get; init; }
+  
+    /// <summary>
+    /// Gets the release page URL.
+    /// </summary>
+    [JsonPropertyName("releaseUrl")]
+    public string? ReleaseUrl { get; init; }
+   
+    /// <summary>
+    /// Gets all assets published for the release.
     /// </summary>
     [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    public List<GXUpdateAsset> Assets { get; init; } = [];
+  
+    /// <summary>
+    /// Gets the selected asset, or null when no asset matches.
+    /// </summary>
+    public GXUpdateAsset? Asset { get; init; }
 }

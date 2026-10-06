@@ -30,48 +30,49 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Gurux.Updater.Model;
 
 /// <summary>
-/// Represents release metadata returned by the GitHub releases API.
+/// Describes an individually downloadable device profile in the index.
 /// </summary>
-internal sealed class GXGitHubRelease
+public sealed class GXDeviceProfileEntry
 {
     /// <summary>
-    /// Gets the Git tag associated with the release.
+    /// Gets the permanent, index-wide unique identifier for this profile.
     /// </summary>
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; init; } = string.Empty;
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
     /// <summary>
-    /// Gets the URL of the GitHub release page.
+    /// Gets the display name of the profile.
     /// </summary>
-    [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
     /// <summary>
-    /// Gets the release notes supplied by GitHub.
+    /// Gets the HTTPS address of the downloadable profile file.
     /// </summary>
-    [JsonPropertyName("body")]
-    public string? Body { get; init; }
+    [JsonPropertyName("location")]
+    public string Location { get; init; } = string.Empty;
     /// <summary>
-    /// Gets a value indicating whether the release is a draft.
+    /// Gets the expected SHA-256 hash of the file content as 64 hexadecimal characters.
     /// </summary>
-    [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
+    [JsonPropertyName("sha256")]
+    public string Sha256 { get; init; } = string.Empty;
     /// <summary>
-    /// Gets a value indicating whether the release is marked as a prerelease.
+    /// Gets the optional file size in bytes.
     /// </summary>
-    [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
+    [JsonPropertyName("size")]
+    public long? Size { get; init; }
     /// <summary>
-    /// Gets the release publish time reported by GitHub.
+    /// Gets the optional user-visible revision label.
     /// </summary>
-    [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
+    [JsonPropertyName("revision")]
+    public string? Revision { get; init; }
     /// <summary>
-    /// Gets the downloadable assets attached to the release.
+    /// Gets the optional selection metadata for this profile.
     /// </summary>
-    [JsonPropertyName("assets")]
-    public List<GXGitHubAsset> Assets { get; init; } = [];
+    [JsonPropertyName("settings")]
+    public JsonElement? Settings { get; init; }
 }
