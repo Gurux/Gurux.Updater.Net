@@ -44,45 +44,60 @@ public sealed class GXUpdateRelease
     /// </summary>
     [JsonPropertyName("version")]
     public string Version { get; init; } = string.Empty;
-  
+
     /// <summary>
     /// Gets the original source tag name.
     /// </summary>
     [JsonPropertyName("tagName")]
     public string TagName { get; init; } = string.Empty;
- 
+
     /// <summary>
     /// Gets a value indicating whether the release is marked as a prerelease.
     /// </summary>
     [JsonPropertyName("isPrerelease")]
-    public bool IsPrerelease { get; init; }
+    public bool IsPrerelease
+    {
+        get; init;
+    }
 
     /// <summary>
     /// Gets the publish time of the release.
     /// </summary>
     [JsonPropertyName("publishedAt")]
-    public DateTimeOffset? PublishedAt { get; init; }
- 
+    public DateTimeOffset? PublishedAt
+    {
+        get; init;
+    }
+
     /// <summary>
     /// Gets the release notes.
     /// </summary>
     [JsonPropertyName("releaseNotes")]
-    public string? ReleaseNotes { get; init; }
-  
+    public string? ReleaseNotes
+    {
+        get; init;
+    }
+
     /// <summary>
     /// Gets the release page URL.
     /// </summary>
     [JsonPropertyName("releaseUrl")]
-    public string? ReleaseUrl { get; init; }
-   
+    public string? ReleaseUrl
+    {
+        get; init;
+    }
+
     /// <summary>
     /// Gets all assets published for the release.
     /// </summary>
     [JsonPropertyName("assets")]
     public List<GXUpdateAsset> Assets { get; init; } = [];
-  
+
     /// <summary>
     /// Gets the selected asset, or null when no asset matches.
     /// </summary>
-    public GXUpdateAsset? Asset { get; init; }
+    public GXUpdateAsset? Asset
+    {
+        get; init;
+    }
 }

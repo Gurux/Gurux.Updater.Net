@@ -49,22 +49,34 @@ public sealed class GXUpdateCatalogItem
     /// Gets the catalog product type.
     /// </summary>
     [JsonPropertyName("type")]
-    public GXCatalogProductType Type { get; init; }
+    public GXCatalogProductType Type
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the display name of the product.
     /// </summary>
     [JsonPropertyName("name")]
-    public string? Name { get; init; }
+    public string? Name
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the product description.
     /// </summary>
     [JsonPropertyName("description")]
-    public string? Description { get; init; }
+    public string? Description
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the backing GitHub repository in owner/name format.
     /// </summary>
     [JsonPropertyName("repository")]
-    public string? Repository { get; init; }
+    public string? Repository
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the releases selected for this catalog item.
     /// </summary>

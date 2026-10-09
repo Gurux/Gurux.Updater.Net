@@ -56,17 +56,75 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "localization")
+            {
+                using var cancellation = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+                Console.CancelKeyPress += cancel;
+                try
+                {
+                    using var localizationClient = new HttpClient();
+                    localizationClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                    await GXLocalizationCommand.RunAsync(localizationClient, args[1..], Console.Out, cancellation.Token, Console.Error);
+                    return 0;
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    Console.Error.WriteLine("Localization operation cancelled.");
+                    return 130;
+                }
+                finally
+                {
+                    Console.CancelKeyPress -= cancel;
+                }
+            }
             GXUpdaterOptions options = GXUpdaterOptions.Parse(args);
             if (options.ShowHelp)
             {
                 Console.WriteLine(GXUpdaterOptions.HelpText);
                 return 0;
             }
+            if (options.PublishPackage != null)
+            {
+                using var catalogClient = new HttpClient();
+                catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                await GXCatalogPublishCommand.RunAsync(catalogClient, options, Console.Out);
+                return 0;
+            }
+            if (options.ListLocalization || options.Localization != null)
+            {
+                using var cancellation = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+                Console.CancelKeyPress += cancel;
+                try
+                {
+                    using var catalogClient = new HttpClient();
+                    catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                    await GXLocalizationCommand.RunAsync(catalogClient, options, Console.Out, cancellation.Token, Console.Error);
+                    return 0;
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    Console.Error.WriteLine("Localization operation cancelled.");
+                    return 130;
+                }
+                finally
+                {
+                    Console.CancelKeyPress -= cancel;
+                }
+            }
             if (options.ListManufacturerSettings)
             {
                 using var catalogClient = new HttpClient();
                 catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
                 await GXManufacturerSettingsCommand.RunAsync(catalogClient, options, Console.Out);
+                return 0;
+            }
+            if (options.ListCatalog)
+            {
+                using var catalogClient = new HttpClient();
+                catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                await GXCatalogCommand.RunAsync(catalogClient, options, Console.Out);
                 return 0;
             }
             using HttpClient client = CreateHttpClient(options.Token);
@@ -80,6 +138,11 @@ internal static class Program
         }
         catch (Exception ex)
         {
+            if (args.Length >= 2 && args[0] == "localization" && args[1] == "validate-package" && ex is InvalidDataException)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new { valid = false, error = ex.Message }));
+                return 2;
+            }
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
@@ -182,49 +245,75 @@ internal static class Program
     /// </summary>
     private static async Task<int> UpdateAsync(GXGitHubUpdateService service, GXUpdaterOptions options)
     {
-        GXUpdateTarget target = CreateTarget(options);
-        GXUpdateInfo info = await service.CheckAsync(target, CancellationToken.None);
-        if (!info.UpdateAvailable)
+        bool local = options.LocalPackage != null;
+        GXUpdateInfo? info = local ? null : await service.CheckAsync(CreateTarget(options), CancellationToken.None);
+        if (!local && !info!.UpdateAvailable)
         {
             Console.WriteLine("The application is already up to date.");
             return 0;
         }
-        if (info.IsContainer)
+        if (!local && info!.IsContainer)
         {
             Console.WriteLine($"Version {info.LatestVersion} is available.");
             Console.WriteLine("In-place updates are disabled in containers. Deploy the new container image instead.");
             return 20;
         }
-        if (info.Asset is null)
+        if (!local && info!.Asset is null)
         {
             throw new InvalidOperationException("No compatible .zip release asset was found.");
         }
+
+        string? applicationPath = string.IsNullOrWhiteSpace(options.Application) ? null : Path.GetFullPath(options.Application);
+        string targetDirectory = local ? Path.GetFullPath(options.Destination!) : Path.GetDirectoryName(applicationPath!)!;
+        if (local)
+        {
+            if (string.Equals(Path.TrimEndingDirectorySeparator(targetDirectory), Path.GetPathRoot(targetDirectory), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("The destination must not be a filesystem root.");
+            }
+
+            if (applicationPath != null)
+            {
+                string relative = Path.GetRelativePath(targetDirectory, applicationPath);
+                if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar))
+                {
+                    throw new ArgumentException("--application must be inside --destination.");
+                }
+            }
+        }
+        bool targetExisted = Directory.Exists(targetDirectory);
 
         string tempRoot = Path.Combine(Path.GetTempPath(), "Gurux.Updater", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
         IGXServiceManager? serviceManager = string.IsNullOrWhiteSpace(options.Service)
             ? null
             : GXServiceManagerFactory.Create();
-        using HttpClient healthClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+        using HttpClient healthClient = new()
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
         GXHealthChecker healthChecker = new(healthClient);
         string? backupDirectory = null;
         bool serviceStopped = false;
         try
         {
-            string package = Path.Combine(tempRoot, info.Asset.Name);
-            Console.WriteLine($"Downloading {info.Asset.Name}...");
-            GXConsoleProgress? progress = options.Json ? null : new GXConsoleProgress();
-            try
+            string package = local ? Path.GetFullPath(options.LocalPackage!) : Path.Combine(tempRoot, info!.Asset!.Name);
+            if (!local)
             {
-                await service.DownloadAsync(
-                    info.Asset.DownloadUrl,
-                    package,
-                    progress,
-                    CancellationToken.None);
-            }
-            finally
-            {
-                progress?.Complete();
+                Console.WriteLine($"Downloading {info!.Asset!.Name}...");
+                GXConsoleProgress? progress = options.Json ? null : new GXConsoleProgress();
+                try
+                {
+                    await service.DownloadAsync(
+                        info.Asset.DownloadUrl,
+                        package,
+                        progress,
+                        CancellationToken.None);
+                }
+                finally
+                {
+                    progress?.Complete();
+                }
             }
             if (!string.IsNullOrWhiteSpace(options.Sha256))
             {
@@ -232,12 +321,14 @@ internal static class Program
                 Console.WriteLine("SHA-256 verified.");
             }
 
-            string applicationPath = Path.GetFullPath(options.Application!);
-            string targetDirectory = Path.GetDirectoryName(applicationPath) ?? throw new InvalidOperationException("Application directory was not found.");
-            backupDirectory = targetDirectory.TrimEnd(Path.DirectorySeparatorChar) + ".backup";
+            backupDirectory = Path.TrimEndingDirectorySeparator(targetDirectory) + ".backup";
             string extractDirectory = Path.Combine(tempRoot, "package");
             Directory.CreateDirectory(extractDirectory);
             ZipFile.ExtractToDirectory(package, extractDirectory, true);
+            if (local && applicationPath != null && !File.Exists(Path.Combine(extractDirectory, Path.GetRelativePath(targetDirectory, applicationPath))))
+            {
+                throw new InvalidDataException("The local ZIP does not contain the specified application.");
+            }
 
             if (!string.IsNullOrWhiteSpace(options.Service))
             {
@@ -250,7 +341,11 @@ internal static class Program
                 await WaitForProcessAsync(processId, options.WaitSeconds);
             }
 
-            BackupDirectory(targetDirectory, backupDirectory);
+            if (targetExisted)
+            {
+                BackupDirectory(targetDirectory, backupDirectory);
+            }
+
             try
             {
                 CopyDirectory(extractDirectory, targetDirectory);
@@ -271,24 +366,38 @@ internal static class Program
                             UseShellExecute = true
                         });
                     }
-                    await healthChecker.WaitAsync(options.HealthUrl, options.VersionUrl, info.LatestVersion, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
+                    await healthChecker.WaitAsync(options.HealthUrl, options.VersionUrl, info?.LatestVersion ?? string.Empty, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
                 }
-                Console.WriteLine($"Installed version {info.LatestVersion}.");
+                Console.WriteLine(local ? "Installed local package." : $"Installed version {info!.LatestVersion}.");
             }
             catch
             {
                 Console.Error.WriteLine("Update failed. Restoring the previous version...");
                 if (!string.IsNullOrWhiteSpace(options.Service) && !serviceStopped)
                 {
-                    try { await serviceManager!.StopAsync(options.Service, CancellationToken.None); } catch { }
+                    try
+                    {
+                        await serviceManager!.StopAsync(options.Service, CancellationToken.None);
+                    }
+                    catch
+                    {
+                    }
                     serviceStopped = true;
                 }
-                RestoreDirectory(targetDirectory, backupDirectory);
+                if (targetExisted)
+                {
+                    RestoreDirectory(targetDirectory, backupDirectory);
+                }
+                else if (Directory.Exists(targetDirectory))
+                {
+                    Directory.Delete(targetDirectory, true);
+                }
+
                 if (!options.NoRestart && !string.IsNullOrWhiteSpace(options.Service))
                 {
                     await serviceManager!.StartAsync(options.Service, CancellationToken.None);
                     serviceStopped = false;
-                    await healthChecker.WaitAsync(options.HealthUrl, null, info.CurrentVersion, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
+                    await healthChecker.WaitAsync(options.HealthUrl, null, info?.CurrentVersion ?? string.Empty, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
                 }
                 throw;
             }
@@ -297,9 +406,21 @@ internal static class Program
         {
             if (serviceStopped && !options.NoRestart && !string.IsNullOrWhiteSpace(options.Service))
             {
-                try { await serviceManager!.StartAsync(options.Service, CancellationToken.None); } catch { }
+                try
+                {
+                    await serviceManager!.StartAsync(options.Service, CancellationToken.None);
+                }
+                catch
+                {
+                }
             }
-            try { Directory.Delete(tempRoot, true); } catch { }
+            try
+            {
+                Directory.Delete(tempRoot, true);
+            }
+            catch
+            {
+            }
         }
         return 0;
     }

@@ -55,7 +55,10 @@ public sealed class GXUpdateTarget
     /// <summary>
     /// Gets the explicit current version, which takes precedence over the application file version.
     /// </summary>
-    public string? CurrentVersion { get; init; }
+    public string? CurrentVersion
+    {
+        get; init;
+    }
 
     /// <summary>
     /// Gets the GitHub repository in owner/name format.
@@ -64,5 +67,8 @@ public sealed class GXUpdateTarget
     /// <summary>
     /// Gets the case-insensitive asset name pattern, whose parts are separated by asterisks.
     /// </summary>
-    public string? AssetPattern { get; init; }
+    public string? AssetPattern
+    {
+        get; init;
+    }
 }

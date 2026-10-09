@@ -41,12 +41,12 @@ public enum CatalogProductType
     /// A standalone application.
     /// </summary>
     Application,
- 
+
     /// <summary>
     /// A module.
     /// </summary>
     Module,
- 
+
     /// <summary>
     /// An agent.
     /// </summary>

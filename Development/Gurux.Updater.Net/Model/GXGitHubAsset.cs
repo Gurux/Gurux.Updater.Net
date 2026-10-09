@@ -54,5 +54,8 @@ internal sealed class GXGitHubAsset
     /// Gets the asset size in bytes.
     /// </summary>
     [JsonPropertyName("size")]
-    public long Size { get; init; }
+    public long Size
+    {
+        get; init;
+    }
 }

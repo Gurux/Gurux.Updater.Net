@@ -46,15 +46,24 @@ public sealed class GXUpdateCheckResult
     /// <summary>
     /// Gets the kind of update target.
     /// </summary>
-    public UpdateTargetType Type { get; init; }
+    public UpdateTargetType Type
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the update information, or null when the check fails.
     /// </summary>
-    public GXUpdateInfo? Update { get; init; }
+    public GXUpdateInfo? Update
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the error message, or null when the check succeeds.
     /// </summary>
-    public string? Error { get; init; }
+    public string? Error
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets a value indicating whether the update check completed without an error.
     /// </summary>

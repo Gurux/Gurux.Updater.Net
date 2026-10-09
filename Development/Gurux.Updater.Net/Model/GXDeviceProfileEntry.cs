@@ -64,15 +64,24 @@ public sealed class GXDeviceProfileEntry
     /// Gets the optional file size in bytes.
     /// </summary>
     [JsonPropertyName("size")]
-    public long? Size { get; init; }
+    public long? Size
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the optional user-visible revision label.
     /// </summary>
     [JsonPropertyName("revision")]
-    public string? Revision { get; init; }
+    public string? Revision
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the optional selection metadata for this profile.
     /// </summary>
     [JsonPropertyName("settings")]
-    public JsonElement? Settings { get; init; }
+    public JsonElement? Settings
+    {
+        get; init;
+    }
 }

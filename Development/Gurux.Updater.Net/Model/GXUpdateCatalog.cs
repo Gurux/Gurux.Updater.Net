@@ -43,12 +43,18 @@ public sealed class GXUpdateCatalog
     /// Gets the catalog schema version.
     /// </summary>
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; init; }
+    public int SchemaVersion
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the time when the catalog was generated.
     /// </summary>
     [JsonPropertyName("generatedAt")]
-    public DateTimeOffset? GeneratedAt { get; init; }
+    public DateTimeOffset? GeneratedAt
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the catalog items.
     /// </summary>

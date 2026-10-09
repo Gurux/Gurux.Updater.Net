@@ -46,7 +46,10 @@ public sealed class GXDeviceProfileStatus
     /// <summary>
     /// Gets the comparison result.
     /// </summary>
-    public GXDeviceProfileStatusKind Kind { get; init; }
+    public GXDeviceProfileStatusKind Kind
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the SHA-256 of the installed file as reported by the host application.
     /// </summary>
@@ -54,5 +57,8 @@ public sealed class GXDeviceProfileStatus
     /// <summary>
     /// Gets the corresponding index entry, or null when the profile is not in the index.
     /// </summary>
-    public GXDeviceProfileEntry? Entry { get; init; }
+    public GXDeviceProfileEntry? Entry
+    {
+        get; init;
+    }
 }

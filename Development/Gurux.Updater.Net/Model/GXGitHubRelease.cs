@@ -48,27 +48,42 @@ internal sealed class GXGitHubRelease
     /// Gets the URL of the GitHub release page.
     /// </summary>
     [JsonPropertyName("html_url")]
-    public string? HtmlUrl { get; init; }
+    public string? HtmlUrl
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the release notes supplied by GitHub.
     /// </summary>
     [JsonPropertyName("body")]
-    public string? Body { get; init; }
+    public string? Body
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets a value indicating whether the release is a draft.
     /// </summary>
     [JsonPropertyName("draft")]
-    public bool Draft { get; init; }
+    public bool Draft
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets a value indicating whether the release is marked as a prerelease.
     /// </summary>
     [JsonPropertyName("prerelease")]
-    public bool Prerelease { get; init; }
+    public bool Prerelease
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the release publish time reported by GitHub.
     /// </summary>
     [JsonPropertyName("published_at")]
-    public DateTimeOffset? PublishedAt { get; init; }
+    public DateTimeOffset? PublishedAt
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the downloadable assets attached to the release.
     /// </summary>

@@ -31,6 +31,8 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Model;
+using Gurux.Updater.Services;
+using Gurux.Updater.Enums;
 
 namespace Gurux.Updater.Tool;
 
@@ -40,13 +42,17 @@ namespace Gurux.Updater.Tool;
 public sealed class GXUpdaterOptions
 {
     /// <summary>
-    /// Gets the command to execute, either check or update.
+    /// Gets the command to execute: check, update, or publish.
     /// </summary>
     public string Command { get; private set; } = "check";
     /// <summary>
     /// Gets the path to the application or add-in whose version is checked.
     /// </summary>
     public string? Application { get; private set; }
+    /// <summary>Gets the local ZIP package to install without release discovery.</summary>
+    public string? LocalPackage { get; private set; }
+    /// <summary>Gets the destination directory for a local installation.</summary>
+    public string? Destination { get; private set; }
     /// <summary>
     /// Gets the path to the JSON file containing targets for a batch check.
     /// </summary>
@@ -101,12 +107,30 @@ public sealed class GXUpdaterOptions
     public bool ListReleases { get; private set; }
     /// <summary>List available manufacturer settings from the DeviceProfiles catalog index.</summary>
     public bool ListManufacturerSettings { get; private set; }
-    /// <summary>HTTPS manufacturer index used for settings listing.</summary>
-    public Uri CatalogUrl { get; private set; } = new("https://gurux.github.io/Gurux.DLMS.DeviceProfiles/manufacturers.json");
+    /// <summary>List localization packages from the selected catalog.</summary>
+    public bool ListLocalization { get; private set; }
+    /// <summary>Existing JSON package or ZIP containing JSON packages to update in place.</summary>
+    public string? Localization { get; private set; }
+    /// <summary>List products and releases from the selected update catalog.</summary>
+    public bool ListCatalog { get; private set; }
+    /// <summary>List every module registered in the update catalog.</summary>
+    public bool ListModules { get; private set; }
+    /// <summary>List every application registered in the update catalog.</summary>
+    public bool ListApplications { get; private set; }
+    /// <summary>Catalog product ID whose releases should be listed.</summary>
+    public string? Product { get; private set; }
+    /// <summary>Deployment ZIP to register with a writable catalog server.</summary>
+    public string? PublishPackage { get; private set; }
+    /// <summary>Optional explicit catalog product type for publishing.</summary>
+    public GXCatalogProductType? PackageType { get; private set; }
+    /// <summary>Optional explicit release version for publishing.</summary>
+    public string? PackageVersion { get; private set; }
+    /// <summary>Update catalog URL, or manufacturer index URL with --list-manufacturer-settings.</summary>
+    public Uri CatalogUrl { get; private set; } = new("http://localhost:8000/catalog.json");
     /// <summary>
-    /// Gets the maximum number of releases to return; the default is five.
+    /// Gets the maximum number of releases to return; the default is one.
     /// </summary>
-    public int Count { get; private set; } = 5;
+    public int Count { get; private set; } = 1;
     /// <summary>
     /// Gets a value indicating whether prereleases are included when listing releases.
     /// </summary>
@@ -132,14 +156,21 @@ public sealed class GXUpdaterOptions
         GXUpdaterOptions result = new();
         bool countSpecified = false;
         bool prereleaseSpecified = false;
+        bool catalogSpecified = false;
 
         if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
         {
             result.ShowHelp = true;
             return result;
         }
-        result.Command = args[0].ToLowerInvariant();
-        for (int pos = 1; pos < args.Length; ++pos)
+        int firstOption = 0;
+        bool explicitCommand = !args[0].StartsWith('-') && !args[0].EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        if (explicitCommand)
+        {
+            result.Command = args[0].ToLowerInvariant();
+            firstOption = 1;
+        }
+        for (int pos = firstOption; pos < args.Length; ++pos)
         {
             string key = args[pos];
             string Next()
@@ -152,22 +183,87 @@ public sealed class GXUpdaterOptions
             }
             switch (key)
             {
-                case "--application": result.Application = Next(); break;
-                case "--targets": result.Targets = Next(); break;
-                case "--max-concurrency": result.MaxConcurrency = int.Parse(Next()); break;
-                case "--repository": result.Repository = Next(); break;
-                case "--asset": result.AssetPattern = Next(); break;
-                case "--token": result.Token = Next(); break;
-                case "--sha256": result.Sha256 = Next(); break;
-                case "--process-id": result.ProcessId = int.Parse(Next()); break;
-                case "--service": result.Service = Next(); break;
-                case "--health-url": result.HealthUrl = new Uri(Next()); break;
-                case "--version-url": result.VersionUrl = new Uri(Next()); break;
-                case "--wait-seconds": result.WaitSeconds = int.Parse(Next()); break;
-                case "--startup-timeout": result.StartupTimeout = int.Parse(Next()); break;
-                case "--list-manufacturer-settings": result.ListManufacturerSettings = true; break;
-                case "--catalog-url": result.CatalogUrl = new Uri(Next(), UriKind.Absolute); break;
-                case "--list-releases": result.ListReleases = true; break;
+                case "--application":
+                    result.Application = Next();
+                    break;
+                case "--local":
+                    result.LocalPackage = Next();
+                    break;
+                case "--destination":
+                    result.Destination = Next();
+                    break;
+                case "--targets":
+                    result.Targets = Next();
+                    break;
+                case "--max-concurrency":
+                    result.MaxConcurrency = int.Parse(Next());
+                    break;
+                case "--repository":
+                    result.Repository = Next();
+                    break;
+                case "--asset":
+                    result.AssetPattern = Next();
+                    break;
+                case "--token":
+                    result.Token = Next();
+                    break;
+                case "--sha256":
+                    result.Sha256 = Next();
+                    break;
+                case "--process-id":
+                    result.ProcessId = int.Parse(Next());
+                    break;
+                case "--service":
+                    result.Service = Next();
+                    break;
+                case "--health-url":
+                    result.HealthUrl = new Uri(Next());
+                    break;
+                case "--version-url":
+                    result.VersionUrl = new Uri(Next());
+                    break;
+                case "--wait-seconds":
+                    result.WaitSeconds = int.Parse(Next());
+                    break;
+                case "--startup-timeout":
+                    result.StartupTimeout = int.Parse(Next());
+                    break;
+                case "--list-manufacturer-settings":
+                    result.ListManufacturerSettings = true;
+                    break;
+                case "--list-localizations":
+                    result.ListLocalization = true;
+                    break;
+                case "--localization":
+                    result.Localization = Next();
+                    break;
+                case "--list-modules":
+                    result.ListModules = true;
+                    break;
+                case "--list-applications":
+                    result.ListApplications = true;
+                    break;
+                case "--product":
+                    result.Product = Next();
+                    break;
+                case "--type":
+                    result.PackageType = Next().ToLowerInvariant() switch
+                    {
+                        "module" => GXCatalogProductType.Module,
+                        "application" => GXCatalogProductType.Application,
+                        _ => throw new ArgumentException("--type must be module or application.")
+                    };
+                    break;
+                case "--version":
+                    result.PackageVersion = Next();
+                    break;
+                case "--catalog-url":
+                    result.CatalogUrl = new Uri(Next(), UriKind.Absolute);
+                    catalogSpecified = true;
+                    break;
+                case "--list-releases":
+                    result.ListReleases = true;
+                    break;
                 case "--count":
                     result.Count = int.Parse(Next());
                     countSpecified = true;
@@ -176,23 +272,165 @@ public sealed class GXUpdaterOptions
                     result.IncludePrereleases = true;
                     prereleaseSpecified = true;
                     break;
-                case "--json": result.Json = true; break;
-                case "--no-restart": result.NoRestart = true; break;
-                default: throw new ArgumentException($"Unknown option '{key}'.");
+                case "--json":
+                    result.Json = true;
+                    break;
+                case "--no-restart":
+                    result.NoRestart = true;
+                    break;
+                default:
+                    if (!key.StartsWith('-') && (key.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || key.EndsWith(".json", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (result.PublishPackage != null)
+                        {
+                            throw new ArgumentException("Specify exactly one ZIP or localization JSON package to publish.");
+                        }
+
+                        result.PublishPackage = key;
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"Unknown option '{key}'.");
+                    }
+
+                    break;
             }
         }
 
-        if (result.Command != "check" && result.Command != "update")
+        if (result.PublishPackage != null && !explicitCommand)
+        {
+            result.Command = "publish";
+        }
+
+        if (result.ListLocalization || result.Localization != null)
+        {
+            if (result.ListLocalization && (result.Command != "check" || result.Localization != null) ||
+                result.Localization != null && (result.Command != "update" || string.IsNullOrWhiteSpace(result.Localization)) ||
+                result.PublishPackage != null || result.LocalPackage != null || result.Destination != null ||
+                result.Application != null || result.Targets != null || !string.IsNullOrEmpty(result.Repository) ||
+                result.ListManufacturerSettings || result.ListModules || result.ListApplications || result.ListReleases ||
+                result.PackageType != null || result.PackageVersion != null || result.AssetPattern != null ||
+                result.Token != null || result.ProcessId != null || result.Service != null || result.HealthUrl != null ||
+                result.VersionUrl != null || result.NoRestart || countSpecified ||
+                result.Localization != null && result.Product != null)
+            {
+                throw new ArgumentException("Use check --list-localizations or update --localization <path>, with --catalog-url, --product, --prerelease or --json. Other update/listing options cannot be combined with localization.");
+            }
+            if (result.Product != null && string.IsNullOrWhiteSpace(result.Product))
+            {
+                throw new ArgumentException("--product requires a nonempty localization owner ID.");
+            }
+            NormalizeCatalogUrl(result);
+            return result;
+        }
+
+        if (result.Command != "check" && result.Command != "update" && result.Command != "publish")
         {
             throw new ArgumentException($"Unknown command '{result.Command}'.");
+        }
+        if (result.PublishPackage != null || result.Command == "publish")
+        {
+            if (result.Command != "publish" || result.PublishPackage == null)
+            {
+                throw new ArgumentException("Catalog publishing requires publish <package.zip|localization.json>.");
+            }
+
+            if (result.LocalPackage != null || result.Destination != null || result.Application != null ||
+                            result.Targets != null || result.ListModules || result.ListApplications || result.ListReleases ||
+                            result.ListManufacturerSettings || countSpecified || !string.IsNullOrEmpty(result.Repository) ||
+                            result.Token != null || result.AssetPattern != null || result.ProcessId != null || result.Service != null ||
+                            result.HealthUrl != null || result.VersionUrl != null || result.NoRestart)
+            {
+                throw new ArgumentException("Catalog publishing cannot be combined with listing, GitHub, installation or restart options.");
+            }
+
+            if (result.Product != null && string.IsNullOrWhiteSpace(result.Product))
+            {
+                throw new ArgumentException("--product requires a nonempty catalog product ID.");
+            }
+
+            if (result.PackageVersion != null && string.IsNullOrWhiteSpace(result.PackageVersion))
+            {
+                throw new ArgumentException("--version requires a nonempty release version.");
+            }
+
+            NormalizeCatalogUrl(result);
+            return result;
+        }
+        if (result.PackageType != null || result.PackageVersion != null)
+        {
+            throw new ArgumentException("--type and --version are supported only when publishing a ZIP package.");
+        }
+
+        if (result.LocalPackage != null || result.Destination != null)
+        {
+            if (result.Command != "update" || string.IsNullOrWhiteSpace(result.LocalPackage) ||
+                string.IsNullOrWhiteSpace(result.Destination))
+            {
+                throw new ArgumentException("Local installation requires update --local <zip> --destination <directory>.");
+            }
+
+            if (result.Targets != null || result.ListReleases || result.ListManufacturerSettings ||
+                            countSpecified || prereleaseSpecified || !string.IsNullOrEmpty(result.Repository) ||
+                            result.AssetPattern != null || result.Token != null || catalogSpecified ||
+                            result.ListModules || result.ListApplications || result.Product != null)
+            {
+                throw new ArgumentException("Local installation cannot be combined with GitHub, catalog or batch options.");
+            }
+
+            if (!result.NoRestart && string.IsNullOrWhiteSpace(result.Service) && string.IsNullOrWhiteSpace(result.Application))
+            {
+                throw new ArgumentException("Use --no-restart or provide --application or --service for local installation.");
+            }
+
+            if (result.VersionUrl != null)
+            {
+                throw new ArgumentException("--version-url is unavailable for local packages without release version metadata. Use --health-url.");
+            }
+
+            return result;
         }
         if (result.ListManufacturerSettings)
         {
             if (result.Command != "check" || result.ListReleases || result.Targets != null || result.Application != null ||
-                !string.IsNullOrEmpty(result.Repository) || countSpecified || prereleaseSpecified || result.AssetPattern != null)
+                !string.IsNullOrEmpty(result.Repository) || countSpecified || prereleaseSpecified || result.AssetPattern != null ||
+                result.ListModules || result.ListApplications || result.Product != null)
+            {
                 throw new ArgumentException("--list-manufacturer-settings requires check and cannot be combined with application, targets or release options.");
-            if (result.CatalogUrl.Scheme != "https")
-                throw new ArgumentException("--catalog-url must be an absolute HTTPS manufacturer index URL.");
+            }
+
+            if (!catalogSpecified)
+            {
+                result.CatalogUrl = new Uri("https://gurux.github.io/Gurux.DLMS.DeviceProfiles/manufacturers.json");
+            }
+
+            if (!GXCatalogUpdateService.IsSupportedUri(result.CatalogUrl))
+            {
+                throw new ArgumentException("--catalog-url must be an absolute HTTPS or HTTP manufacturer index URL.");
+            }
+
+            return result;
+        }
+        if (catalogSpecified || result.ListModules || result.ListApplications || result.Product != null)
+        {
+            if (result.Command != "check" || result.Targets != null || result.Application != null ||
+                !string.IsNullOrEmpty(result.Repository) || result.Token != null)
+            {
+                throw new ArgumentException("Catalog listing requires check and cannot be combined with application, repository, token or targets options.");
+            }
+
+            NormalizeCatalogUrl(result);
+            if (result.Count < 1)
+            {
+                throw new ArgumentException("--count must be greater than zero.");
+            }
+
+            if (result.Product != null && string.IsNullOrWhiteSpace(result.Product))
+            {
+                throw new ArgumentException("--product requires a nonempty catalog product ID.");
+            }
+
+            result.ListCatalog = true;
             return result;
         }
         if (result.Command == "update" && result.ListReleases)
@@ -255,6 +493,19 @@ public sealed class GXUpdaterOptions
         return result;
     }
 
+    private static void NormalizeCatalogUrl(GXUpdaterOptions options)
+    {
+        if (!GXCatalogUpdateService.IsSupportedUri(options.CatalogUrl))
+        {
+            throw new ArgumentException("--catalog-url must be an absolute HTTPS or HTTP update catalog URL.");
+        }
+
+        if (options.CatalogUrl.AbsolutePath == "/")
+        {
+            options.CatalogUrl = new UriBuilder(options.CatalogUrl) { Path = "/catalog.json" }.Uri;
+        }
+    }
+
     /// <summary>
     /// Contains command-line usage, options, and exit code descriptions.
     /// </summary>
@@ -262,21 +513,46 @@ public sealed class GXUpdaterOptions
 Gurux.Updater (.NET 10)
 
 Usage:
+  Gurux.Updater localization <list|add|update|download|validate> [options]
+  Gurux.Updater localization --help
+  Gurux.Updater [publish] [--catalog-url <url>] <package.zip> [--product <id>] [--type module|application] [--version <version>]
+  Gurux.Updater publish <localization.json> [--catalog-url <url>] [--json]
+  Gurux.Updater [check] --catalog-url <url> [--count <n>] [--prerelease] [--json]
+  Gurux.Updater [check] --list-modules [--list-applications] [catalog options]
+  Gurux.Updater [check] --list-applications [catalog options]
+  Gurux.Updater [check] --product <id> [--count <n>] [--prerelease] [--json]
   Gurux.Updater check  --application <path> --repository <owner/name> [options]
   Gurux.Updater check  --repository <owner/name> --list-releases [options]
   Gurux.Updater check  --list-manufacturer-settings [--catalog-url <url>] [--json]
+  Gurux.Updater check  --list-localizations [--catalog-url <url>] [--product <id>] [--json]
+  Gurux.Updater update --localization <json-or-zip-file> [--catalog-url <url>] [--prerelease] [--json]
   Gurux.Updater check  --targets <targets.json> [options]
   Gurux.Updater update --application <path> --repository <owner/name> [options]
+  Gurux.Updater update --local <package.zip> --destination <directory> --no-restart [options]
 
 Options:
+  --local <zip>              Install a local ZIP without GitHub or version checks.
+  --destination <directory> Destination directory for local installation.
   --targets <file>           Check multiple applications/add-ins from a JSON file.
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.
   --list-manufacturer-settings List available profiles (no profile downloads).
-  --catalog-url <url>        HTTPS manufacturer index URL.
-  --list-releases            List recent releases. Default count: 5.
-  --count <n>                Number of releases to list. Default: 5.
+  --list-localizations       List the latest localization packages from the catalog.
+  --localization <json-or-zip-file> Update JSON packages using their owners and versions.
+  --list-modules             List all catalog modules.
+  --list-applications        List all catalog applications (combine with --list-modules).
+  --product <id>             List versions of one catalog product, e.g. Gurux.DLMS.AMI.
+                            When publishing, overrides the ID read from the package.
+  --type module|application  Override the product type when publishing a ZIP.
+  --version <version>        Override the release version when publishing a ZIP.
+  --catalog-url <url>        List an update catalog (server root resolves to /catalog.json).
+                            With --list-manufacturer-settings, selects an index or update catalog.
+                            With localization, selects a catalog containing Gurux.AMI.Localization.
+                            Default catalog: http://localhost:8000/catalog.json.
+  --list-releases            List recent releases. Default count: 1.
+  --count <n>                Maximum releases per product. Default: 1 (latest release).
   --prerelease               Include prereleases when listing releases.
+                            When publishing, marks the new release as a prerelease.
   --process-id <pid>         Wait for this process to exit before installing.
   --service <name>           Windows Service or systemd service to stop/start.
   --health-url <url>         Wait for HTTP success after restart.

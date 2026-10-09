@@ -41,7 +41,7 @@ public enum UpdateTargetType
     /// A standalone application.
     /// </summary>
     Application,
-  
+
     /// <summary>
     /// An add-in loaded by a host application.
     /// </summary>

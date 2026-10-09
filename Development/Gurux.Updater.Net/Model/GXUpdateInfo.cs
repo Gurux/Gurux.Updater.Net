@@ -66,21 +66,36 @@ public sealed class GXUpdateInfo
     /// <summary>
     /// Gets a value indicating whether the latest release is newer than the installed version.
     /// </summary>
-    public bool UpdateAvailable { get; init; }
+    public bool UpdateAvailable
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets a value indicating whether the update check is running in a detected container.
     /// </summary>
-    public bool IsContainer { get; init; }
+    public bool IsContainer
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the release notes for the latest version.
     /// </summary>
-    public string? ReleaseNotes { get; init; }
+    public string? ReleaseNotes
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the URL of the latest GitHub release page.
     /// </summary>
-    public string? ReleaseUrl { get; init; }
+    public string? ReleaseUrl
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the selected release asset, or null when no asset matches.
     /// </summary>
-    public GXUpdateAsset? Asset { get; init; }
+    public GXUpdateAsset? Asset
+    {
+        get; init;
+    }
 }

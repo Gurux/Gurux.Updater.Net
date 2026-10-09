@@ -43,12 +43,18 @@ public sealed class GXDeviceProfileIndex
     /// Gets the schema version of the index document.
     /// </summary>
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; init; }
+    public int SchemaVersion
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the time when the index was generated.
     /// </summary>
     [JsonPropertyName("generatedAt")]
-    public DateTimeOffset? GeneratedAt { get; init; }
+    public DateTimeOffset? GeneratedAt
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the manufacturer entries in the index.
     /// </summary>

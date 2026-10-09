@@ -31,6 +31,10 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Model;
+using Gurux.Updater.Enums;
+using System.IO.Compression;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -50,6 +54,96 @@ public sealed class GXCatalogUpdateService
     public GXCatalogUpdateService(HttpClient client)
     {
         _client = client;
+    }
+
+    /// <summary>Publishes a local deployable ZIP and returns the updated, validated catalog.</summary>
+    public async Task<GXUpdateCatalog> PublishAsync(
+        Uri catalogUri,
+        string packagePath,
+        GXCatalogPackageInfo metadata,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(catalogUri);
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
+        if (!IsSupportedUri(catalogUri))
+        {
+            throw new ArgumentException("Catalog URI must use HTTPS or HTTP on a loopback host.", nameof(catalogUri));
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.Id))
+        {
+            throw new ArgumentException("Product ID could not be inferred. Supply --product with the module's declared ID.", nameof(metadata));
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.Version))
+        {
+            throw new ArgumentException("Package version is required. Supply --version.", nameof(metadata));
+        }
+
+        if (metadata.Type is not (GXCatalogProductType.Module or GXCatalogProductType.Application))
+        {
+            throw new ArgumentException("Only module and application ZIPs can be published.", nameof(metadata));
+        }
+
+        if (!string.Equals(Path.GetExtension(packagePath), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Package must be a deployable ZIP file.", nameof(packagePath));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await using FileStream file = File.OpenRead(packagePath);
+        using (ZipArchive zip = new(file, ZipArchiveMode.Read, leaveOpen: true))
+        {
+            // Read the directory before sending so invalid ZIPs never reach the server.
+            _ = zip.Entries.Count;
+        }
+        file.Position = 0;
+        List<KeyValuePair<string, string>> fields =
+        [
+            new("product", metadata.Id),
+            new("type", metadata.Type == GXCatalogProductType.Module ? "module" : "application"),
+            new("version", metadata.Version),
+            new("filename", Path.GetFileName(packagePath)),
+            new("prerelease", metadata.IsPrerelease ? "true" : "false")
+        ];
+        if (!string.IsNullOrWhiteSpace(metadata.Name))
+        {
+            fields.Add(new("name", metadata.Name));
+        }
+
+        UriBuilder uri = new(catalogUri);
+        string query = string.Join("&", fields.Select(x => Uri.EscapeDataString(x.Key) + "=" + Uri.EscapeDataString(x.Value)));
+        uri.Query = string.IsNullOrEmpty(uri.Query) ? query : uri.Query.TrimStart('?') + "&" + query;
+        using HttpRequestMessage request = new(HttpMethod.Post, uri.Uri);
+        request.Content = new StreamContent(file);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+        request.Content.Headers.ContentLength = file.Length;
+        using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            string detail = await response.Content.ReadAsStringAsync(cancellationToken);
+            string message = response.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented
+                ? "The catalog server does not support ZIP publishing. Update and restart serve_catalog.py."
+                : $"Catalog publishing failed ({(int)response.StatusCode} {response.ReasonPhrase}): {detail}";
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        GXUpdateCatalog catalog = await JsonSerializer.DeserializeAsync<GXUpdateCatalog>(stream, JsonOptions, cancellationToken)
+            ?? throw new InvalidDataException("Catalog response was empty.");
+        ValidateCatalog(catalog);
+        return catalog;
+    }
+
+    /// <summary>
+    /// Returns whether an absolute catalog or package URI uses HTTPS or HTTP on a loopback host.
+    /// HTTP loopback addresses support local development catalogs, including their ZIP assets.
+    /// </summary>
+    public static bool IsSupportedUri(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        return uri.IsAbsoluteUri && (uri.Scheme == Uri.UriSchemeHttps ||
+            uri.Scheme == Uri.UriSchemeHttp);
     }
 
     /// <summary>
@@ -78,6 +172,25 @@ public sealed class GXCatalogUpdateService
             cancellationToken)
             ?? throw new InvalidDataException("Catalog response was empty.");
 
+        ValidateCatalog(catalog);
+        return catalog;
+    }
+
+    /// <summary>Reads a local or HTTPS update catalog. Existing update assets must retain absolute HTTP(S) addresses.</summary>
+    public async Task<GXUpdateCatalog> GetCatalogAsync(string catalogSource, CancellationToken cancellationToken = default)
+    {
+        var reader = new GXCatalogSourceReader(_client, allowLoopbackHttp: true);
+        byte[] bytes = await reader.ReadAsync(catalogSource, cancellationToken);
+        GXUpdateCatalog catalog;
+        try
+        {
+            catalog = JsonSerializer.Deserialize<GXUpdateCatalog>(bytes, JsonOptions)
+                ?? throw new InvalidDataException("Catalog was empty.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"Invalid update catalog JSON in '{catalogSource}': {ex.Message}", ex);
+        }
         ValidateCatalog(catalog);
         return catalog;
     }
@@ -218,9 +331,9 @@ public sealed class GXCatalogUpdateService
                         throw new InvalidDataException($"Catalog asset name is required for '{item.Id}' version '{release.Version}'.");
                     }
                     if (!Uri.TryCreate(asset.DownloadUrl, UriKind.Absolute, out Uri? uri) ||
-                        !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                        !IsSupportedUri(uri))
                     {
-                        throw new InvalidDataException($"Catalog asset downloadUrl must be an absolute HTTPS URI for '{item.Id}' version '{release.Version}'.");
+                        throw new InvalidDataException($"Catalog asset downloadUrl must be an absolute HTTPS URI or an HTTP loopback URI for '{item.Id}' version '{release.Version}'.");
                     }
                     if (asset.Size < 0)
                     {

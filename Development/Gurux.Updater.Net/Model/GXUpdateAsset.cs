@@ -53,10 +53,16 @@ public sealed class GXUpdateAsset
     /// Gets the asset size in bytes.
     /// </summary>
     [JsonPropertyName("size")]
-    public long Size { get; init; }
+    public long Size
+    {
+        get; init;
+    }
     /// <summary>
     /// Gets the optional asset digest.
     /// </summary>
     [JsonPropertyName("digest")]
-    public string? Digest { get; init; }
+    public string? Digest
+    {
+        get; init;
+    }
 }

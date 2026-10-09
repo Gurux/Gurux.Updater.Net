@@ -47,17 +47,26 @@ public sealed class GXUpdateMonitor
         /// <summary>
         /// The last successful result, or null before the first successful check.
         /// </summary>
-        public GXUpdateInfo? Update { get; init; }
+        public GXUpdateInfo? Update
+        {
+            get; init;
+        }
 
         /// <summary>
         /// UTC time of the last successful check.
         /// </summary>
-        public DateTimeOffset? CheckedAt { get; init; }
+        public DateTimeOffset? CheckedAt
+        {
+            get; init;
+        }
 
         /// <summary>
         /// The latest error, cleared after success. Cancellation is not an error.
         /// </summary>
-        public Exception? Error { get; init; }
+        public Exception? Error
+        {
+            get; init;
+        }
     }
 
     private readonly GXGitHubUpdateService _updater;
@@ -102,7 +111,11 @@ public sealed class GXUpdateMonitor
         await _checkLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!ReferenceEquals(observed, Status)) return Status;
+            if (!ReferenceEquals(observed, Status))
+            {
+                return Status;
+            }
+
             try
             {
                 var update = await _updater.CheckAsync(_target, cancellationToken).ConfigureAwait(false);
@@ -114,7 +127,10 @@ public sealed class GXUpdateMonitor
             }
             catch (Exception ex)
             {
-                next = observed with { Error = ex };
+                next = observed with
+                {
+                    Error = ex
+                };
             }
             Volatile.Write(ref _status, next);
         }
@@ -133,11 +149,17 @@ public sealed class GXUpdateMonitor
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
+        {
             throw new InvalidOperationException("This update monitor is already running.");
+        }
+
         try
         {
             using var timer = new PeriodicTimer(_interval);
-            do { await CheckAsync(cancellationToken).ConfigureAwait(false); }
+            do
+            {
+                await CheckAsync(cancellationToken).ConfigureAwait(false);
+            }
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
