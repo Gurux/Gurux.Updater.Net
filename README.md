@@ -74,6 +74,12 @@ Supply explicit metadata when a package cannot identify itself:
 dotnet Gurux.Updater.Tool.dll publish --catalog-url http://localhost:8000/catalog.json package.zip --product MyApp --type application --version 1.2.3
 ```
 
+Use `--type agent` to publish an agent deployment ZIP:
+
+```shell
+dotnet Gurux.Updater.Tool.dll publish Gurux.AMI.Agent-Gurux.DLMS.AMI.Agent-1.0.0-rc1.zip --type agent --catalog-url http://localhost:8000/catalog.json
+```
+
 The server stores the ZIP, updates `catalog-sources.json`, and immediately serves
 the release from `catalog.json`. Repeating identical product/version/package data
 is idempotent. Different bytes for an existing version require a new version
@@ -100,12 +106,14 @@ Omitting the command selects `check`. A server root URL resolves to `/catalog.js
 releases. This lists available releases without downloading or installing packages.
 
 The default catalog is `http://localhost:8000/catalog.json`. List all modules,
-all applications, or the versions of a specific product by its catalog ID:
+all applications, all agents, or the versions of a specific product by its catalog ID:
 
 ```shell
 Gurux.Updater.Tool.exe --list-modules
 Gurux.Updater.Tool.exe --list-applications
-Gurux.Updater.Tool.exe --list-modules --list-applications
+Gurux.Updater.Tool.exe --list-agents
+Gurux.Updater.Tool.exe --list-modules --list-applications --list-agents
+dotnet Gurux.Updater.Tool.dll check --list-agents --catalog-url http://localhost:8000/catalog.json --prerelease
 Gurux.Updater.Tool.exe --product Gurux.DLMS.AMI --list-releases
 Gurux.Updater.Tool.exe --product Gurux.DLMS.AMI --count 10 --prerelease --json
 ```

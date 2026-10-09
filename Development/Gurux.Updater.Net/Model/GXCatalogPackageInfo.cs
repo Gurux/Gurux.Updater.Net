@@ -9,7 +9,7 @@ public sealed class GXCatalogPackageInfo
     public string Id { get; set; } = string.Empty;
     /// <summary>Gets or sets the optional display name.</summary>
     public string? Name { get; set; }
-    /// <summary>Gets or sets the application or module type.</summary>
+    /// <summary>Gets or sets the application, module or agent type.</summary>
     public GXCatalogProductType Type { get; set; }
     /// <summary>Gets or sets the package version.</summary>
     public string Version { get; set; } = string.Empty;

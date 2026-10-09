@@ -17,10 +17,11 @@ public static class GXCatalogCommand
         var source = await service.GetCatalogAsync(options.CatalogUrl, cancellationToken);
         var catalog = new GXUpdateCatalog { SchemaVersion = source.SchemaVersion, GeneratedAt = source.GeneratedAt };
         IEnumerable<GXUpdateCatalogItem> items = source.Items;
-        if (options.ListModules || options.ListApplications)
+        if (options.ListModules || options.ListApplications || options.ListAgents)
         {
             items = items.Where(item => options.ListModules && item.Type == GXCatalogProductType.Module ||
-            options.ListApplications && item.Type == GXCatalogProductType.Application);
+            options.ListApplications && item.Type == GXCatalogProductType.Application ||
+            options.ListAgents && item.Type == GXCatalogProductType.Agent);
         }
 
         if (options.Product != null)

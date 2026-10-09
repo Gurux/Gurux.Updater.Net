@@ -117,6 +117,8 @@ public sealed class GXUpdaterOptions
     public bool ListModules { get; private set; }
     /// <summary>List every application registered in the update catalog.</summary>
     public bool ListApplications { get; private set; }
+    /// <summary>List every agent registered in the update catalog.</summary>
+    public bool ListAgents { get; private set; }
     /// <summary>Catalog product ID whose releases should be listed.</summary>
     public string? Product { get; private set; }
     /// <summary>Deployment ZIP to register with a writable catalog server.</summary>
@@ -240,6 +242,9 @@ public sealed class GXUpdaterOptions
                 case "--list-modules":
                     result.ListModules = true;
                     break;
+                case "--list-agents":
+                    result.ListAgents = true;
+                    break;
                 case "--list-applications":
                     result.ListApplications = true;
                     break;
@@ -251,7 +256,8 @@ public sealed class GXUpdaterOptions
                     {
                         "module" => GXCatalogProductType.Module,
                         "application" => GXCatalogProductType.Application,
-                        _ => throw new ArgumentException("--type must be module or application.")
+                        "agent" => GXCatalogProductType.Agent,
+                        _ => throw new ArgumentException("--type must be module, application or agent.")
                     };
                     break;
                 case "--version":
@@ -308,7 +314,7 @@ public sealed class GXUpdaterOptions
                 result.Localization != null && (result.Command != "update" || string.IsNullOrWhiteSpace(result.Localization)) ||
                 result.PublishPackage != null || result.LocalPackage != null || result.Destination != null ||
                 result.Application != null || result.Targets != null || !string.IsNullOrEmpty(result.Repository) ||
-                result.ListManufacturerSettings || result.ListModules || result.ListApplications || result.ListReleases ||
+                result.ListManufacturerSettings || result.ListModules || result.ListApplications || result.ListAgents || result.ListReleases ||
                 result.PackageType != null || result.PackageVersion != null || result.AssetPattern != null ||
                 result.Token != null || result.ProcessId != null || result.Service != null || result.HealthUrl != null ||
                 result.VersionUrl != null || result.NoRestart || countSpecified ||
@@ -336,7 +342,7 @@ public sealed class GXUpdaterOptions
             }
 
             if (result.LocalPackage != null || result.Destination != null || result.Application != null ||
-                            result.Targets != null || result.ListModules || result.ListApplications || result.ListReleases ||
+                            result.Targets != null || result.ListModules || result.ListApplications || result.ListAgents || result.ListReleases ||
                             result.ListManufacturerSettings || countSpecified || !string.IsNullOrEmpty(result.Repository) ||
                             result.Token != null || result.AssetPattern != null || result.ProcessId != null || result.Service != null ||
                             result.HealthUrl != null || result.VersionUrl != null || result.NoRestart)
@@ -373,7 +379,7 @@ public sealed class GXUpdaterOptions
             if (result.Targets != null || result.ListReleases || result.ListManufacturerSettings ||
                             countSpecified || prereleaseSpecified || !string.IsNullOrEmpty(result.Repository) ||
                             result.AssetPattern != null || result.Token != null || catalogSpecified ||
-                            result.ListModules || result.ListApplications || result.Product != null)
+                            result.ListModules || result.ListApplications || result.ListAgents || result.Product != null)
             {
                 throw new ArgumentException("Local installation cannot be combined with GitHub, catalog or batch options.");
             }
@@ -394,7 +400,7 @@ public sealed class GXUpdaterOptions
         {
             if (result.Command != "check" || result.ListReleases || result.Targets != null || result.Application != null ||
                 !string.IsNullOrEmpty(result.Repository) || countSpecified || prereleaseSpecified || result.AssetPattern != null ||
-                result.ListModules || result.ListApplications || result.Product != null)
+                result.ListModules || result.ListApplications || result.ListAgents || result.Product != null)
             {
                 throw new ArgumentException("--list-manufacturer-settings requires check and cannot be combined with application, targets or release options.");
             }
@@ -411,7 +417,7 @@ public sealed class GXUpdaterOptions
 
             return result;
         }
-        if (catalogSpecified || result.ListModules || result.ListApplications || result.Product != null)
+        if (catalogSpecified || result.ListModules || result.ListApplications || result.ListAgents || result.Product != null)
         {
             if (result.Command != "check" || result.Targets != null || result.Application != null ||
                 !string.IsNullOrEmpty(result.Repository) || result.Token != null)
@@ -515,11 +521,12 @@ Gurux.Updater (.NET 10)
 Usage:
   Gurux.Updater localization <list|add|update|download|validate> [options]
   Gurux.Updater localization --help
-  Gurux.Updater [publish] [--catalog-url <url>] <package.zip> [--product <id>] [--type module|application] [--version <version>]
+  Gurux.Updater [publish] [--catalog-url <url>] <package.zip> [--product <id>] [--type module|application|agent] [--version <version>]
   Gurux.Updater publish <localization.json> [--catalog-url <url>] [--json]
   Gurux.Updater [check] --catalog-url <url> [--count <n>] [--prerelease] [--json]
   Gurux.Updater [check] --list-modules [--list-applications] [catalog options]
   Gurux.Updater [check] --list-applications [catalog options]
+  Gurux.Updater [check] --list-agents [catalog options]
   Gurux.Updater [check] --product <id> [--count <n>] [--prerelease] [--json]
   Gurux.Updater check  --application <path> --repository <owner/name> [options]
   Gurux.Updater check  --repository <owner/name> --list-releases [options]
@@ -539,11 +546,12 @@ Options:
   --list-manufacturer-settings List available profiles (no profile downloads).
   --list-localizations       List the latest localization packages from the catalog.
   --localization <json-or-zip-file> Update JSON packages using their owners and versions.
+  --list-agents              List all catalog agents (combine with --list-modules or --list-applications).
   --list-modules             List all catalog modules.
   --list-applications        List all catalog applications (combine with --list-modules).
   --product <id>             List versions of one catalog product, e.g. Gurux.DLMS.AMI.
                             When publishing, overrides the ID read from the package.
-  --type module|application  Override the product type when publishing a ZIP.
+  --type module|application|agent  Override the product type when publishing a ZIP.
   --version <version>        Override the release version when publishing a ZIP.
   --catalog-url <url>        List an update catalog (server root resolves to /catalog.json).
                             With --list-manufacturer-settings, selects an index or update catalog.

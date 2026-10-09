@@ -81,9 +81,9 @@ public sealed class GXCatalogUpdateService
             throw new ArgumentException("Package version is required. Supply --version.", nameof(metadata));
         }
 
-        if (metadata.Type is not (GXCatalogProductType.Module or GXCatalogProductType.Application))
+        if (metadata.Type is not (GXCatalogProductType.Module or GXCatalogProductType.Application or GXCatalogProductType.Agent))
         {
-            throw new ArgumentException("Only module and application ZIPs can be published.", nameof(metadata));
+            throw new ArgumentException("Only module, application and agent ZIPs can be published.", nameof(metadata));
         }
 
         if (!string.Equals(Path.GetExtension(packagePath), ".zip", StringComparison.OrdinalIgnoreCase))
@@ -102,7 +102,7 @@ public sealed class GXCatalogUpdateService
         List<KeyValuePair<string, string>> fields =
         [
             new("product", metadata.Id),
-            new("type", metadata.Type == GXCatalogProductType.Module ? "module" : "application"),
+            new("type", metadata.Type.ToString().ToLowerInvariant()),
             new("version", metadata.Version),
             new("filename", Path.GetFileName(packagePath)),
             new("prerelease", metadata.IsPrerelease ? "true" : "false")
