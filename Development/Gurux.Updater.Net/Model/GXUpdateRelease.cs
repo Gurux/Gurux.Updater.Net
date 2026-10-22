@@ -31,6 +31,7 @@
 //---------------------------------------------------------------------------
 
 using System.Text.Json.Serialization;
+using Gurux.Updater.Enums;
 
 namespace Gurux.Updater.Model;
 
@@ -39,6 +40,23 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateRelease
 {
+    /// <summary>Gets exact assembly dependencies; null means metadata is unavailable.</summary>
+    [JsonPropertyName("references")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<GXAssemblyReference>? References { get; init; }
+    /// <summary>Gets or sets publisher-declared urgency.</summary>
+    [JsonPropertyName("priority")]
+    public GXUpdatePriority Priority { get; set; } = GXUpdatePriority.Normal;
+    /// <summary>Gets or sets whether this release contains declared security fixes.</summary>
+    [JsonPropertyName("isSecurityUpdate")]
+    public bool IsSecurityUpdate { get; set; }
+    /// <summary>Gets whether the publisher has ended support.</summary>
+    [JsonPropertyName("isUnsupported")]
+    public bool IsUnsupported { get; init; }
+    /// <summary>Gets whether the publisher has withdrawn this release.</summary>
+    [JsonPropertyName("isRevoked")]
+    public bool IsRevoked { get; init; }
+
     /// <summary>
     /// Gets the normalized version while preserving any prerelease label.
     /// </summary>

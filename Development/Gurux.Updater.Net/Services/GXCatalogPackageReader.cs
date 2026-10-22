@@ -12,7 +12,7 @@ namespace Gurux.Updater.Services;
 /// <summary>Reads deployable ZIP metadata without loading or executing package assemblies.</summary>
 public static class GXCatalogPackageReader
 {
-    private sealed record AssemblyInfo(string Path, string Name, string? Version, string AssemblyVersion, bool EntryPoint, List<(string? Id, string? Name)> Modules);
+    private sealed record AssemblyInfo(string Path, string Name, string? Version, string AssemblyVersion, bool EntryPoint, List<(string? Id, string? Name)> Modules, List<GXAssemblyReference> References);
 
     /// <summary>Infers the main product, module ID and version from .NET metadata inside a ZIP.</summary>
     /// <remarks>Computed or ambiguous module IDs are returned empty so callers can supply --product.</remarks>
@@ -55,7 +55,12 @@ public static class GXCatalogPackageReader
                     modules.Add((ConstantGetter(pe, metadata, handle, "get_Id"), ConstantGetter(pe, metadata, handle, "get_Name")));
                 }
                 assemblies.Add(new(entry.FullName, metadata.GetString(assembly.Name), version is null ? null : NormalizeVersion(version), assembly.Version.ToString(),
-                    (pe.PEHeaders.CorHeader?.EntryPointTokenOrRelativeVirtualAddress ?? 0) != 0, modules));
+                    (pe.PEHeaders.CorHeader?.EntryPointTokenOrRelativeVirtualAddress ?? 0) != 0, modules,
+                    metadata.AssemblyReferences.Select(handle =>
+                    {
+                        var reference = metadata.GetAssemblyReference(handle);
+                        return new GXAssemblyReference { Name = metadata.GetString(reference.Name) + ".dll", Version = reference.Version.ToString() };
+                    }).ToList()));
             }
             catch (BadImageFormatException)
             {
@@ -79,7 +84,7 @@ public static class GXCatalogPackageReader
             {
                 string[] versions = mains.Select(x => x.Version ?? DepsVersion(zip, x) ?? x.AssemblyVersion).Distinct().ToArray();
                 string version = versions.Length == 1 ? versions[0] : string.Empty;
-                return new GXCatalogPackageInfo { Type = GXCatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-') };
+                return new GXCatalogPackageInfo { Type = CatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-'), References = MergeReferences(mains, assemblies) };
             }
         }
         if (mains.Count == 0)
@@ -104,12 +109,33 @@ public static class GXCatalogPackageReader
         string versionValue = main.Version ?? DepsVersion(zip, main) ?? main.AssemblyVersion;
         return new GXCatalogPackageInfo
         {
+            References = MergeReferences([main], assemblies),
             Id = id,
             Name = name,
-            Type = module ? GXCatalogProductType.Module : GXCatalogProductType.Application,
+            Type = module ? CatalogProductType.Module : CatalogProductType.Application,
             Version = versionValue,
             IsPrerelease = versionValue.Contains('-')
         };
+    }
+
+    private static List<GXAssemblyReference> MergeReferences(IEnumerable<AssemblyInfo> mains, List<AssemblyInfo> assemblies)
+    {
+        var pending = new Queue<AssemblyInfo>(mains);
+        HashSet<string> visited = new(StringComparer.OrdinalIgnoreCase);
+        List<GXAssemblyReference> references = [];
+        while (pending.TryDequeue(out var current))
+        {
+            if (!visited.Add(current.Path)) continue;
+            references.AddRange(current.References);
+            foreach (var reference in current.References)
+            {
+                foreach (var bundled in assemblies.Where(x => string.Equals(x.Name + ".dll", reference.Name, StringComparison.OrdinalIgnoreCase)
+                    && x.AssemblyVersion == reference.Version))
+                    pending.Enqueue(bundled);
+            }
+        }
+        return references.DistinctBy(x => (x.Name, x.Version))
+            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Version).ToList();
     }
 
     private static List<AssemblyInfo> FindMains(ZipArchive zip, List<AssemblyInfo> assemblies, string suffix)

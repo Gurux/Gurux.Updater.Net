@@ -9,6 +9,23 @@ namespace Gurux.Updater.Tool;
 /// <summary>Lists update catalog products and available releases without installing or downloading packages.</summary>
 public static class GXCatalogCommand
 {
+    /// <summary>Checks an installed catalog product without downloading or installing it.</summary>
+    public static async Task<int> CheckAsync(HttpClient client, GXUpdaterOptions options, TextWriter output,
+        CancellationToken cancellationToken = default)
+    {
+        var info = await new GXCatalogUpdateService(client).CheckAsync(options.CatalogUrl.AbsoluteUri,
+            options.Product!, new GXUpdateTarget { Name = options.Product, CurrentVersion = options.CurrentVersion,
+                AssetPattern = options.AssetPattern }, options.IncludePrereleases, cancellationToken);
+        if (options.Json)
+            await output.WriteLineAsync(JsonSerializer.Serialize(info, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+        else
+        {
+            await output.WriteLineAsync(GXUpdateText.Status(info));
+            if (info.UpdateAvailable) await output.WriteLineAsync($"{info.CurrentVersion} -> {info.LatestVersion}");
+            if (info.Error is not null) await output.WriteLineAsync(info.Error);
+        }
+        return info.Status == GXUpdateStatus.CheckFailed ? 1 : info.UpdateAvailable ? 10 : 0;
+    }
     /// <summary>Reads the catalog and writes its selected releases as a table or JSON document.</summary>
     public static async Task RunAsync(HttpClient client, GXUpdaterOptions options, TextWriter output,
         CancellationToken cancellationToken = default)
@@ -19,9 +36,9 @@ public static class GXCatalogCommand
         IEnumerable<GXUpdateCatalogItem> items = source.Items;
         if (options.ListModules || options.ListApplications || options.ListAgents)
         {
-            items = items.Where(item => options.ListModules && item.Type == GXCatalogProductType.Module ||
-            options.ListApplications && item.Type == GXCatalogProductType.Application ||
-            options.ListAgents && item.Type == GXCatalogProductType.Agent);
+            items = items.Where(item => options.ListModules && item.Type == CatalogProductType.Module ||
+            options.ListApplications && item.Type == CatalogProductType.Application ||
+            options.ListAgents && item.Type == CatalogProductType.Agent);
         }
 
         if (options.Product != null)
@@ -67,7 +84,7 @@ public static class GXCatalogCommand
 
             foreach (var release in item.Releases)
             {
-                await output.WriteLineAsync($"  {release.Version}{(release.IsPrerelease ? " (prerelease)" : "")}");
+                await output.WriteLineAsync($"  {release.Version}{(release.IsPrerelease ? " (prerelease)" : "")} — {GXUpdateText.Priority(release.Priority, release.IsSecurityUpdate)}{(release.IsRevoked ? " — release revoked" : release.IsUnsupported ? " — no longer supported" : "")}");
                 List<GXUpdateAsset> assets = options.AssetPattern == null ? release.Assets :
                     release.Asset == null ? [] : [release.Asset];
                 if (options.AssetPattern != null && assets.Count == 0)

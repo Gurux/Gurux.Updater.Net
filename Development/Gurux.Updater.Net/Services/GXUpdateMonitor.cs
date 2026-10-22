@@ -31,6 +31,7 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Model;
+using Gurux.Updater.Enums;
 
 namespace Gurux.Updater.Services;
 
@@ -44,6 +45,9 @@ public sealed class GXUpdateMonitor
     /// </summary>
     public sealed record State
     {
+        /// <summary>The latest outcome; stale successful data does not mask failures.</summary>
+        public GXUpdateStatus Status => Error is not null ? GXUpdateStatus.CheckFailed : Update?.Status ?? GXUpdateStatus.Unknown;
+
         /// <summary>
         /// The last successful result, or null before the first successful check.
         /// </summary>

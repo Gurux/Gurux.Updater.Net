@@ -67,5 +67,7 @@ public sealed class GXUpdateCheckResult
     /// <summary>
     /// Gets a value indicating whether the update check completed without an error.
     /// </summary>
-    public bool Succeeded => Error is null;
+    public bool Succeeded => Error is null && Update?.Status != GXUpdateStatus.CheckFailed;
+    /// <summary>Gets the check outcome independently of update availability.</summary>
+    public GXUpdateStatus Status => Error is not null ? GXUpdateStatus.CheckFailed : Update?.Status ?? GXUpdateStatus.Unknown;
 }

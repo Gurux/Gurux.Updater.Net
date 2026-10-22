@@ -31,6 +31,7 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Model;
+using Gurux.Updater.Enums;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -81,6 +82,7 @@ public sealed class GXGitHubUpdateService
             CurrentVersion = current,
             LatestVersion = latest,
             UpdateAvailable = CompareVersions(current, latest) < 0,
+            Status = CompareVersions(current, latest) < 0 ? GXUpdateStatus.UpdateAvailable : GXUpdateStatus.UpToDate,
             ReleaseNotes = release.Body,
             ReleaseUrl = release.HtmlUrl,
             IsContainer = IsContainer(),
@@ -185,7 +187,7 @@ public sealed class GXGitHubUpdateService
                     Update = update
                 };
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 results[index] = new GXUpdateCheckResult
                 {
@@ -318,7 +320,7 @@ public sealed class GXGitHubUpdateService
     /// <summary>
     /// Returns the explicit current version or reads it from the target application.
     /// </summary>
-    private static string GetCurrentVersion(GXUpdateTarget target)
+    internal static string GetCurrentVersion(GXUpdateTarget target)
     {
         if (!string.IsNullOrWhiteSpace(target.CurrentVersion))
         {

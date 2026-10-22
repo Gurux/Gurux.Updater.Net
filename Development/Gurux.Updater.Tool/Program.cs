@@ -56,6 +56,11 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 2 && args[0] == "package-metadata")
+            {
+                Console.WriteLine(JsonSerializer.Serialize(GXCatalogPackageReader.Read(args[1]), JsonOptions));
+                return 0;
+            }
             if (args.Length > 0 && args[0] == "localization")
             {
                 using var cancellation = new CancellationTokenSource();
@@ -124,6 +129,8 @@ internal static class Program
             {
                 using var catalogClient = new HttpClient();
                 catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                if (options.CurrentVersion != null)
+                    return await GXCatalogCommand.CheckAsync(catalogClient, options, Console.Out);
                 await GXCatalogCommand.RunAsync(catalogClient, options, Console.Out);
                 return 0;
             }
@@ -203,14 +210,12 @@ internal static class Program
                 {
                     if (!result.Succeeded)
                     {
-                        Console.WriteLine($"{result.Name,-28} {result.Type,-11} ERROR: {result.Error}");
+                        Console.WriteLine($"{result.Name,-28} {result.Type,-11} Update check failed: {result.Error}");
                     }
                     else
                     {
                         GXUpdateInfo update = result.Update!;
-                        string status = update.UpdateAvailable
-                            ? $"{update.CurrentVersion} -> {update.LatestVersion}"
-                            : $"{update.CurrentVersion} (up to date)";
+                        string status = $"{GXUpdateText.Status(update)} ({update.CurrentVersion} -> {update.LatestVersion})";
                         Console.WriteLine($"{result.Name,-28} {result.Type,-11} {status}");
                     }
                 }
@@ -219,13 +224,23 @@ internal static class Program
                 results.Any(x => !x.Succeeded) ? 1 : 0;
         }
         GXUpdateTarget target = CreateTarget(options);
-        GXUpdateInfo info = await service.CheckAsync(target, CancellationToken.None);
+        GXUpdateInfo info;
+        try { info = await service.CheckAsync(target, CancellationToken.None); }
+        catch (Exception ex)
+        {
+            info = new GXUpdateInfo { Name = target.Name ?? string.Empty, Application = target.Application ?? string.Empty,
+                Repository = target.Repository ?? string.Empty, Status = GXUpdateStatus.CheckFailed, Error = ex.Message };
+        }
         if (options.Json)
         {
             Console.WriteLine(JsonSerializer.Serialize(info, JsonOptions));
         }
         else
         {
+            Console.WriteLine(GXUpdateText.Status(info));
+            Console.WriteLine($"Priority:         {info.Priority}");
+            Console.WriteLine($"Security update:  {info.IsSecurityUpdate}");
+            if (info.Error is not null) Console.Error.WriteLine(info.Error);
             Console.WriteLine($"Application:      {info.Application}");
             Console.WriteLine($"Current version:  {info.CurrentVersion}");
             Console.WriteLine($"Latest version:   {info.LatestVersion}");
@@ -237,7 +252,7 @@ internal static class Program
                 Console.WriteLine($"Asset:            {info.Asset.Name}");
             }
         }
-        return info.UpdateAvailable ? 10 : 0;
+        return info.Status == GXUpdateStatus.CheckFailed ? 1 : info.UpdateAvailable ? 10 : 0;
     }
 
     /// <summary>

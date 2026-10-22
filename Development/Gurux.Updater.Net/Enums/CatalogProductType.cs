@@ -41,14 +41,16 @@ public enum CatalogProductType
     /// A standalone application.
     /// </summary>
     Application,
-
     /// <summary>
-    /// A module.
+    /// A loadable module.
     /// </summary>
     Module,
-
     /// <summary>
     /// An agent.
     /// </summary>
-    Agent
+    Agent,
+    /// <summary>
+    /// A configuration bundle such as a device profile index.
+    /// </summary>
+    Configuration
 }

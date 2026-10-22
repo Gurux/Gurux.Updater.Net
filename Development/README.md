@@ -193,6 +193,9 @@ The library downloads files; the CLI implements installation and rollback.
 
 ## Check for updates
 
+See [update status and release classification](Update-classification.md) for the
+separate status, priority and security fields, catalog checks and error handling.
+
 ```shell
 gurux-updater check --application Gurux.Data.Relay.dll --repository Gurux/Gurux.Data.Relay
 gurux-updater check --application Gurux.Data.Relay.dll --repository Gurux/Gurux.Data.Relay --json
@@ -406,7 +409,7 @@ A package contains every supported language for one application or module:
   "releaseNotes": "Initial English and Finnish translations",
   "resources": {
     "en": { "Title": "Mail", "Send": "Send" },
-    "fi": { "Title": "Posti", "Send": "L‰het‰" }
+    "fi": { "Title": "Posti", "Send": "L√§het√§" }
   }
 }
 ```

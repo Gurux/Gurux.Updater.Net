@@ -49,7 +49,7 @@ public sealed class GXUpdateCatalogItem
     /// Gets the catalog product type.
     /// </summary>
     [JsonPropertyName("type")]
-    public GXCatalogProductType Type
+    public CatalogProductType Type
     {
         get; init;
     }

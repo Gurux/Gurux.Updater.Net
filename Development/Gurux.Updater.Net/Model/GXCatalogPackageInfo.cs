@@ -5,12 +5,14 @@ namespace Gurux.Updater.Model;
 /// <summary>Metadata used to register a deployable ZIP in an update catalog.</summary>
 public sealed class GXCatalogPackageInfo
 {
+    /// <summary>Gets or sets exact assembly dependencies read from the deployment package.</summary>
+    public List<GXAssemblyReference>? References { get; set; }
     /// <summary>Gets or sets the product identifier. An empty inferred module ID requires an explicit override.</summary>
     public string Id { get; set; } = string.Empty;
     /// <summary>Gets or sets the optional display name.</summary>
     public string? Name { get; set; }
     /// <summary>Gets or sets the application, module or agent type.</summary>
-    public GXCatalogProductType Type { get; set; }
+    public CatalogProductType Type { get; set; }
     /// <summary>Gets or sets the package version.</summary>
     public string Version { get; set; } = string.Empty;
     /// <summary>Gets or sets whether the version is a prerelease.</summary>

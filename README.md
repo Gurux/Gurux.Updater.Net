@@ -193,6 +193,10 @@ The library downloads files; the CLI implements installation and rollback.
 
 ## Check for updates
 
+See [update status and release classification](Development/Update-classification.md)
+for the separate status, priority and security fields, backward compatibility,
+catalog checks and error handling.
+
 ```shell
 gurux-updater check --application Gurux.Data.Relay.dll --repository Gurux/Gurux.Data.Relay
 gurux-updater check --application Gurux.Data.Relay.dll --repository Gurux/Gurux.Data.Relay --json
@@ -406,7 +410,7 @@ A package contains every supported language for one application or module:
   "releaseNotes": "Initial English and Finnish translations",
   "resources": {
     "en": { "Title": "Mail", "Send": "Send" },
-    "fi": { "Title": "Posti", "Send": "L‰het‰" }
+    "fi": { "Title": "Posti", "Send": "L√§het√§" }
   }
 }
 ```
@@ -456,3 +460,56 @@ to a current Gurux.Updater.Tool.dll. Validation times out after 30 seconds.
 Identical uploads print Already published; changed same-version content requests a version
 increase. Local update status includes local and catalog versions.
 Storage remains under _site/localization.
+
+
+### Module assembly version compatibility
+
+Catalog releases can contain exact assembly dependencies, read from the main module DLL's
+.NET assembly metadata during ZIP publishing, including dependencies reached through bundled DLLs:
+
+```json
+"references": [
+  { "name": "Gurux.DLMS.AMI.Module.dll", "version": "1.0.0.1" }
+]
+```
+
+Versions are four-part `AssemblyVersion` values, independent of release/NuGet versions.
+Missing `references` means unknown; an explicit empty array means no dependencies.
+The catalog builder and server preserve this data per release in `catalog-sources.json`.
+Existing packages can be inspected without loading their assemblies:
+
+```powershell
+dotnet Gurux.Updater.Tool.dll package-metadata module.zip
+```
+
+Supply the host's actual assembly versions to check whether a module can be updated:
+
+```csharp
+var files = Directory.EnumerateFiles(applicationDirectory, "*.dll")
+    .Concat(((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
+var available = GXModuleCompatibility.ReadAssemblyVersions(files);
+var target = new GXUpdateTarget
+{
+    CurrentVersion = "1.0.0",
+    AvailableAssemblies = available,
+    AssetPattern = "*.zip"
+};
+var info = await new GXCatalogUpdateService(client).CheckAsync(catalog, "Smtp", target);
+// info.Compatibility contains IsKnown, IsCompatible and per-DLL Issues.
+// Incompatible or unknown dependency metadata prevents offering a newer module:
+// UpdateAvailable is false and Asset is null.
+```
+
+Include the DLLs the target application will actually resolve, including framework/runtime
+assemblies and any dependencies supplied alongside the module. The runtime list above is
+appropriate when checking the currently running host; for a different host, supply its own
+runtime files. Conflicting versions of one DLL are rejected. DLLs are inspected without
+loading or executing their code. Native DLLs are skipped.
+
+For a release alone, call `GXModuleCompatibility.Check(release, available)`.
+Matching requires exactly the same assembly version; newer versions are not automatically
+accepted. This checks versions, not API or behavioral compatibility. When `AvailableAssemblies`
+is null, existing update discovery remains available and `Compatibility` is null.
+The check reports compatibility for the latest recommended release; it does not select an
+older compatible release automatically. Restart the catalog server after updating its scripts.

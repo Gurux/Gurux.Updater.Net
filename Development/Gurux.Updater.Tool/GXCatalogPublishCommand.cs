@@ -31,9 +31,15 @@ public static class GXCatalogPublishCommand
                     : $"Published localization '{package.Owner}' version '{package.Version}' to {index}");
             return;
         }
-        var info = options.Product != null && options.PackageType.HasValue && options.PackageVersion != null
-            ? new GXCatalogPackageInfo { Id = options.Product, Name = options.Product, Type = options.PackageType.Value, Version = options.PackageVersion }
-            : GXCatalogPackageReader.Read(packagePath);
+        GXCatalogPackageInfo info;
+        try
+        {
+            info = GXCatalogPackageReader.Read(packagePath);
+        }
+        catch (InvalidDataException) when (options.Product != null && options.PackageType.HasValue && options.PackageVersion != null)
+        {
+            info = new GXCatalogPackageInfo { Id = options.Product, Name = options.Product, Type = options.PackageType.Value, Version = options.PackageVersion };
+        }
         if (options.Product != null)
         {
             info.Id = options.Product;

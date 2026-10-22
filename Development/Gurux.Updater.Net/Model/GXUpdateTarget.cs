@@ -39,6 +39,9 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateTarget
 {
+    /// <summary>Gets host/runtime DLL basenames and assembly versions for module compatibility checks.
+    /// Null leaves compatibility unchecked; an empty collection means no dependencies are available.</summary>
+    public IReadOnlyDictionary<string, Version>? AvailableAssemblies { get; init; }
     /// <summary>
     /// Gets the name of the update target.
     /// </summary>

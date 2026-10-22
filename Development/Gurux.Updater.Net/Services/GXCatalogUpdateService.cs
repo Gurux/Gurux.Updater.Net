@@ -31,6 +31,7 @@
 //---------------------------------------------------------------------------
 
 using Gurux.Updater.Model;
+using NuGet.Versioning;
 using Gurux.Updater.Enums;
 using System.IO.Compression;
 using System.Net;
@@ -81,7 +82,7 @@ public sealed class GXCatalogUpdateService
             throw new ArgumentException("Package version is required. Supply --version.", nameof(metadata));
         }
 
-        if (metadata.Type is not (GXCatalogProductType.Module or GXCatalogProductType.Application or GXCatalogProductType.Agent))
+        if (metadata.Type is not (CatalogProductType.Module or CatalogProductType.Application or CatalogProductType.Agent))
         {
             throw new ArgumentException("Only module, application and agent ZIPs can be published.", nameof(metadata));
         }
@@ -92,6 +93,7 @@ public sealed class GXCatalogUpdateService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        if (metadata.References is not null) GXModuleCompatibility.ValidateReferences(metadata.References);
         await using FileStream file = File.OpenRead(packagePath);
         using (ZipArchive zip = new(file, ZipArchiveMode.Read, leaveOpen: true))
         {
@@ -111,6 +113,8 @@ public sealed class GXCatalogUpdateService
         {
             fields.Add(new("name", metadata.Name));
         }
+        if (metadata.References is not null)
+            fields.Add(new("references", JsonSerializer.Serialize(metadata.References, JsonOptions)));
 
         UriBuilder uri = new(catalogUri);
         string query = string.Join("&", fields.Select(x => Uri.EscapeDataString(x.Key) + "=" + Uri.EscapeDataString(x.Value)));
@@ -264,6 +268,81 @@ public sealed class GXCatalogUpdateService
         return Task.FromResult<IReadOnlyList<GXUpdateRelease>>(releases);
     }
 
+    /// <summary>Checks a catalog source. Failures return CheckFailed with detail; caller cancellation propagates.</summary>
+    public async Task<GXUpdateInfo> CheckAsync(string catalogSource, string productId, GXUpdateTarget target,
+        bool includePrereleases = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        try
+        {
+            var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
+            return await CheckAsync(catalog, productId, target, includePrereleases, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) { return FailedCheck(target, ex); }
+    }
+
+    /// <summary>Checks the newest applicable supported release and aggregates declared fixes in the offered path.</summary>
+    public Task<GXUpdateInfo> CheckAsync(GXUpdateCatalog catalog, string productId, GXUpdateTarget target,
+        bool includePrereleases = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            ArgumentNullException.ThrowIfNull(catalog);
+            ValidateCatalog(catalog);
+            var item = catalog.Items.SingleOrDefault(x => x.Id == productId)
+                ?? throw new InvalidDataException($"Catalog product '{productId}' was not found.");
+            string current = GXGitHubUpdateService.GetCurrentVersion(target);
+            NuGetVersion installed = ParseVersion(current);
+            var versions = item.Releases.Select(r => (Release: r, Version: ParseVersion(r.Version))).ToArray();
+            var installedReleases = versions.Where(x => VersionComparer.VersionRelease.Compare(x.Version, installed) == 0).ToArray();
+            var applicable = versions.Where(x => includePrereleases || !(x.Release.IsPrerelease || x.Version.IsPrerelease))
+                .Where(x => string.IsNullOrWhiteSpace(target.AssetPattern) || GXUpdateAssetSelector.SelectAsset(x.Release.Assets, target.AssetPattern) is not null)
+                .ToArray();
+            var recommended = applicable.Where(x => !x.Release.IsRevoked && !x.Release.IsUnsupported)
+                .OrderByDescending(x => x.Version, VersionComparer.VersionRelease).FirstOrDefault();
+            bool available = recommended.Release is not null && VersionComparer.VersionRelease.Compare(recommended.Version, installed) > 0;
+            var compatibility = item.Type == CatalogProductType.Module && recommended.Release is not null && target.AvailableAssemblies is not null
+                ? GXModuleCompatibility.Check(recommended.Release, target.AvailableAssemblies) : null;
+            bool blocked = available && compatibility is { IsCompatible: false };
+            if (blocked) available = false;
+            GXUpdateStatus status = installedReleases.Any(x => x.Release.IsRevoked) ? GXUpdateStatus.Revoked :
+                installedReleases.Any(x => x.Release.IsUnsupported) ? GXUpdateStatus.Unsupported :
+                recommended.Release is null || blocked ? GXUpdateStatus.Unknown :
+                available ? GXUpdateStatus.UpdateAvailable : GXUpdateStatus.UpToDate;
+            var path = available ? applicable.Where(x => VersionComparer.VersionRelease.Compare(x.Version, installed) > 0 &&
+                VersionComparer.VersionRelease.Compare(x.Version, recommended.Version) <= 0).Select(x => x.Release).ToArray() : [];
+            var release = recommended.Release is null ? null : CloneRelease(recommended.Release, target.AssetPattern);
+            return Task.FromResult(new GXUpdateInfo
+            {
+                Name = target.Name ?? item.Name ?? item.Id,
+                Type = item.Type == CatalogProductType.Module ? UpdateTargetType.AddIn : UpdateTargetType.Application,
+                Application = target.Application ?? string.Empty, Repository = item.Repository ?? target.Repository ?? string.Empty,
+                CurrentVersion = current, LatestVersion = release?.Version ?? string.Empty,
+                Status = status, UpdateAvailable = available,
+                Compatibility = compatibility,
+                Priority = path.Length == 0 ? GXUpdatePriority.Normal : path.Max(x => x.Priority),
+                IsSecurityUpdate = path.Any(x => x.IsSecurityUpdate),
+                ReleaseNotes = release?.ReleaseNotes, ReleaseUrl = release?.ReleaseUrl, Asset = blocked ? null : release?.Asset
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) { return Task.FromResult(FailedCheck(target, ex)); }
+    }
+
+    private static NuGetVersion ParseVersion(string value) =>
+        NuGetVersion.TryParse(value.Trim().TrimStart('v', 'V'), out var version) ? version :
+            throw new InvalidDataException($"Invalid catalog check version '{value}'.");
+
+    private static GXUpdateInfo FailedCheck(GXUpdateTarget target, Exception error) => new()
+    {
+        Name = target.Name ?? string.Empty, Type = target.Type, Application = target.Application ?? string.Empty,
+        Repository = target.Repository ?? string.Empty, CurrentVersion = target.CurrentVersion ?? string.Empty,
+        Status = GXUpdateStatus.CheckFailed, Error = error.Message
+    };
+
     private static GXUpdateRelease CloneRelease(GXUpdateRelease release, string? assetPattern)
     {
         List<GXUpdateAsset> assets = release.Assets
@@ -278,7 +357,12 @@ public sealed class GXCatalogUpdateService
 
         return new GXUpdateRelease
         {
+            References = release.References?.Select(x => new GXAssemblyReference { Name = x.Name, Version = x.Version }).ToList(),
             Version = release.Version,
+            Priority = release.Priority,
+            IsSecurityUpdate = release.IsSecurityUpdate,
+            IsUnsupported = release.IsUnsupported,
+            IsRevoked = release.IsRevoked,
             TagName = release.TagName,
             IsPrerelease = release.IsPrerelease,
             PublishedAt = release.PublishedAt,
@@ -310,6 +394,11 @@ public sealed class GXCatalogUpdateService
 
             foreach (GXUpdateRelease release in item.Releases)
             {
+                if (release.References is not null) GXModuleCompatibility.ValidateReferences(release.References);
+                if (!Enum.IsDefined(release.Priority))
+                {
+                    throw new InvalidDataException($"Invalid release priority for '{item.Id}' version '{release.Version}'.");
+                }
                 if (string.IsNullOrWhiteSpace(release.Version))
                 {
                     throw new InvalidDataException($"Catalog release version is required for '{item.Id}'.");

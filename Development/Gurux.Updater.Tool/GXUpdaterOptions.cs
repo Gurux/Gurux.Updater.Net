@@ -121,10 +121,12 @@ public sealed class GXUpdaterOptions
     public bool ListAgents { get; private set; }
     /// <summary>Catalog product ID whose releases should be listed.</summary>
     public string? Product { get; private set; }
+    /// <summary>Installed version for a catalog product check.</summary>
+    public string? CurrentVersion { get; private set; }
     /// <summary>Deployment ZIP to register with a writable catalog server.</summary>
     public string? PublishPackage { get; private set; }
     /// <summary>Optional explicit catalog product type for publishing.</summary>
-    public GXCatalogProductType? PackageType { get; private set; }
+    public CatalogProductType? PackageType { get; private set; }
     /// <summary>Optional explicit release version for publishing.</summary>
     public string? PackageVersion { get; private set; }
     /// <summary>Update catalog URL, or manufacturer index URL with --list-manufacturer-settings.</summary>
@@ -185,6 +187,9 @@ public sealed class GXUpdaterOptions
             }
             switch (key)
             {
+                case "--current-version":
+                    result.CurrentVersion = Next();
+                    break;
                 case "--application":
                     result.Application = Next();
                     break;
@@ -254,9 +259,9 @@ public sealed class GXUpdaterOptions
                 case "--type":
                     result.PackageType = Next().ToLowerInvariant() switch
                     {
-                        "module" => GXCatalogProductType.Module,
-                        "application" => GXCatalogProductType.Application,
-                        "agent" => GXCatalogProductType.Agent,
+                        "module" => CatalogProductType.Module,
+                        "application" => CatalogProductType.Application,
+                        "agent" => CatalogProductType.Agent,
                         _ => throw new ArgumentException("--type must be module, application or agent.")
                     };
                     break;
@@ -307,6 +312,10 @@ public sealed class GXUpdaterOptions
         {
             result.Command = "publish";
         }
+
+        if (result.CurrentVersion != null && (result.Command != "check" || result.ListLocalization ||
+            result.Localization != null || result.ListManufacturerSettings || result.LocalPackage != null || result.PublishPackage != null))
+            throw new ArgumentException("--current-version is supported by catalog product checks only.");
 
         if (result.ListLocalization || result.Localization != null)
         {
@@ -436,9 +445,13 @@ public sealed class GXUpdaterOptions
                 throw new ArgumentException("--product requires a nonempty catalog product ID.");
             }
 
+            if (result.CurrentVersion != null && (string.IsNullOrWhiteSpace(result.CurrentVersion) || result.Product == null || result.ListReleases))
+                throw new ArgumentException("--current-version requires --product and cannot be combined with --list-releases.");
             result.ListCatalog = true;
             return result;
         }
+        if (result.CurrentVersion != null)
+            throw new ArgumentException("--current-version is supported by catalog product checks only.");
         if (result.Command == "update" && result.ListReleases)
         {
             throw new ArgumentException("--list-releases is supported by the check command only.");
@@ -540,6 +553,7 @@ Usage:
 Options:
   --local <zip>              Install a local ZIP without GitHub or version checks.
   --destination <directory> Destination directory for local installation.
+  --current-version <version> Installed catalog product version; requires --product.
   --targets <file>           Check multiple applications/add-ins from a JSON file.
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.
@@ -572,6 +586,9 @@ Options:
   --json                     Print check result as JSON.
   --no-restart               Do not restart the application after update.
   --help                     Show help.
+
+Other commands:
+  package-metadata <zip>     Print inferred ZIP metadata and exact assembly references as JSON.
 
 Exit codes:
   0   Success / no update.

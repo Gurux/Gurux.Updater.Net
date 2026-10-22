@@ -39,6 +39,17 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateInfo
 {
+    /// <summary>Gets module dependency compatibility, or null when it was not checked.</summary>
+    public GXModuleCompatibilityResult? Compatibility { get; init; }
+    /// <summary>Gets the outcome for the installed version.</summary>
+    public GXUpdateStatus Status { get; init; } = GXUpdateStatus.Unknown;
+    /// <summary>Gets or sets the highest declared urgency in the offered update path.</summary>
+    public GXUpdatePriority Priority { get; set; } = GXUpdatePriority.Normal;
+    /// <summary>Gets or sets whether the offered path contains declared security fixes.</summary>
+    public bool IsSecurityUpdate { get; set; }
+    /// <summary>Gets failure detail, or null on success.</summary>
+    public string? Error { get; init; }
+
     /// <summary>
     /// Gets the name of the update target.
     /// </summary>
