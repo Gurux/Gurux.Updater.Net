@@ -534,6 +534,8 @@ Gurux.Updater (.NET 10)
 Usage:
   Gurux.Updater localization <list|add|update|download|validate> [options]
   Gurux.Updater localization --help
+  Gurux.Updater script <list|publish|download|status|update|reject> [options]
+  Gurux.Updater script --help
   Gurux.Updater [publish] [--catalog-url <url>] <package.zip> [--product <id>] [--type module|application|agent] [--version <version>]
   Gurux.Updater publish <localization.json> [--catalog-url <url>] [--json]
   Gurux.Updater [check] --catalog-url <url> [--count <n>] [--prerelease] [--json]

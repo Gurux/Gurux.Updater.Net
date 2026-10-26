@@ -459,3 +459,10 @@ to a current Gurux.Updater.Tool.dll. Validation times out after 30 seconds.
 Identical uploads print Already published; changed same-version content requests a version
 increase. Local update status includes local and catalog versions.
 Storage remains under _site/localization.
+
+## Standalone C# scripts
+
+The updater supports `script publish`, `list`, `download`, `status`, `update` and `reject`.
+Scripts are distributed as a source file plus versioned metadata; local edits can be
+restored from the installed original with a backup. Scripts are never executed.
+See [script catalog usage](Script-catalog.md).

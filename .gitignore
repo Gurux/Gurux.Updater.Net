@@ -57,3 +57,8 @@ nunit-*.xml
 /Development/Gurux.Updater.Net.Tests
 /Development/Gurux.Updater.Tool.Tests
 /examples
+/Gurux.Updater.Net.Tests
+/Gurux.Updater.Tool.Tests
+/Updater.Tests
+Development/catalog-update-example.json
+/Tests

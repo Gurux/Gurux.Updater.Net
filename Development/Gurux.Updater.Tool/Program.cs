@@ -56,6 +56,21 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "script")
+            {
+                using var cancellation = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+                Console.CancelKeyPress += cancel;
+                try
+                {
+                    using var scriptClient = new HttpClient();
+                    scriptClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+                    await GXScriptCommand.RunAsync(scriptClient, args[1..], Console.Out, cancellation.Token);
+                    return 0;
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return 130; }
+                finally { Console.CancelKeyPress -= cancel; }
+            }
             if (args.Length == 2 && args[0] == "package-metadata")
             {
                 Console.WriteLine(JsonSerializer.Serialize(GXCatalogPackageReader.Read(args[1]), JsonOptions));
@@ -145,6 +160,11 @@ internal static class Program
         }
         catch (Exception ex)
         {
+            if (args.Length >= 2 && args[0] == "script" && args[1] == "validate-manifest" && ex is InvalidDataException or JsonException)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new { valid = false, error = ex.Message }));
+                return 2;
+            }
             if (args.Length >= 2 && args[0] == "localization" && args[1] == "validate-package" && ex is InvalidDataException)
             {
                 Console.Out.WriteLine(JsonSerializer.Serialize(new { valid = false, error = ex.Message }));

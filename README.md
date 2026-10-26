@@ -513,3 +513,10 @@ accepted. This checks versions, not API or behavioral compatibility. When `Avail
 is null, existing update discovery remains available and `Compatibility` is null.
 The check reports compatibility for the latest recommended release; it does not select an
 older compatible release automatically. Restart the catalog server after updating its scripts.
+
+## Standalone C# scripts
+
+The updater supports `script publish`, `list`, `download`, `status`, `update` and `reject`.
+Scripts are distributed as a source file plus versioned metadata; local edits can be
+restored from the installed original with a backup. Scripts are never executed.
+See [script catalog usage](Development/Script-catalog.md).
