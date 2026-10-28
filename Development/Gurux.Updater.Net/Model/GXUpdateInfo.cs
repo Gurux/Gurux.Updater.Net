@@ -39,6 +39,12 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateInfo
 {
+    /// <summary>Gets the product's declared maintenance state, or null if unknown.</summary>
+    public string? MaintenanceStatus { get; init; }
+    /// <summary>Gets the product's category, or null if unknown.</summary>
+    public string? Category { get; init; }
+    /// <summary>Gets the product's audience, or null if unknown.</summary>
+    public string? Audience { get; init; }
     /// <summary>Gets module dependency compatibility, or null when it was not checked.</summary>
     public GXModuleCompatibilityResult? Compatibility { get; init; }
     /// <summary>Gets the outcome for the installed version.</summary>

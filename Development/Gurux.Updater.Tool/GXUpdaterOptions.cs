@@ -30,7 +30,6 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
-using Gurux.Updater.Model;
 using Gurux.Updater.Services;
 using Gurux.Updater.Enums;
 
@@ -121,6 +120,14 @@ public sealed class GXUpdaterOptions
     public bool ListAgents { get; private set; }
     /// <summary>Catalog product ID whose releases should be listed.</summary>
     public string? Product { get; private set; }
+    /// <summary>Gets the optional maintenance state filter.</summary>
+    public string? MaintenanceStatus { get; private set; }
+    /// <summary>Gets the optional product category filter.</summary>
+    public string? Category { get; private set; }
+    /// <summary>Gets the optional audience filter.</summary>
+    public string? Audience { get; private set; }
+    /// <summary>Gets the installed AMI version for a catalog product check.</summary>
+    public string? AmiVersion { get; private set; }
     /// <summary>Installed version for a catalog product check.</summary>
     public string? CurrentVersion { get; private set; }
     /// <summary>Deployment ZIP to register with a writable catalog server.</summary>
@@ -187,6 +194,18 @@ public sealed class GXUpdaterOptions
             }
             switch (key)
             {
+                case "--maintenance-status":
+                    result.MaintenanceStatus = Next().ToLowerInvariant();
+                    break;
+                case "--category":
+                    result.Category = Next().ToLowerInvariant();
+                    break;
+                case "--audience":
+                    result.Audience = Next().ToLowerInvariant();
+                    break;
+                case "--ami-version":
+                    result.AmiVersion = Next();
+                    break;
                 case "--current-version":
                     result.CurrentVersion = Next();
                     break;
@@ -313,6 +332,25 @@ public sealed class GXUpdaterOptions
             result.Command = "publish";
         }
 
+        bool filters = result.MaintenanceStatus is not null || result.Category is not null || result.Audience is not null;
+        if (filters)
+        {
+            if (result.Command != "check" || result.ListLocalization || result.Localization is not null ||
+                result.ListManufacturerSettings || result.LocalPackage is not null || result.PublishPackage is not null || result.CurrentVersion is not null)
+                throw new ArgumentException("Product filters are supported by catalog listing only.");
+            try
+            {
+                GXCatalogMetadata.ValidateClassification(result.MaintenanceStatus, "maintenanceStatus");
+                GXCatalogMetadata.ValidateClassification(result.Category, "category");
+                GXCatalogMetadata.ValidateClassification(result.Audience, "audience");
+            }
+            catch (InvalidDataException ex) { throw new ArgumentException(ex.Message, ex); }
+        }
+        if (result.AmiVersion is not null && (result.Command != "check" || result.Product is null || result.CurrentVersion is null ||
+            !NuGet.Versioning.NuGetVersion.TryParse(result.AmiVersion, out _) || result.ListLocalization || result.ListManufacturerSettings ||
+            result.Localization is not null || result.PublishPackage is not null || result.LocalPackage is not null))
+            throw new ArgumentException("--ami-version requires a catalog check with --product and --current-version and a valid version.");
+
         if (result.CurrentVersion != null && (result.Command != "check" || result.ListLocalization ||
             result.Localization != null || result.ListManufacturerSettings || result.LocalPackage != null || result.PublishPackage != null))
             throw new ArgumentException("--current-version is supported by catalog product checks only.");
@@ -426,7 +464,7 @@ public sealed class GXUpdaterOptions
 
             return result;
         }
-        if (catalogSpecified || result.ListModules || result.ListApplications || result.ListAgents || result.Product != null)
+        if (catalogSpecified || filters || result.ListModules || result.ListApplications || result.ListAgents || result.Product != null)
         {
             if (result.Command != "check" || result.Targets != null || result.Application != null ||
                 !string.IsNullOrEmpty(result.Repository) || result.Token != null)
@@ -532,6 +570,8 @@ public sealed class GXUpdaterOptions
 Gurux.Updater (.NET 10)
 
 Usage:
+  Gurux.Updater [check] --maintenance-status <status> [--category <slug>] [--audience <slug>] [catalog options]
+  Gurux.Updater check --product <id> --current-version <version> [--ami-version <version>] [catalog options]
   Gurux.Updater localization <list|add|update|download|validate> [options]
   Gurux.Updater localization --help
   Gurux.Updater script <list|publish|download|status|update|reject> [options]

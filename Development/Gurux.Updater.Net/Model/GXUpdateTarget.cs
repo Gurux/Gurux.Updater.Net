@@ -39,6 +39,8 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateTarget
 {
+    /// <summary>Gets the installed AMI product version for declared range checks.</summary>
+    public string? AmiVersion { get; init; }
     /// <summary>Gets host/runtime DLL basenames and assembly versions for module compatibility checks.
     /// Null leaves compatibility unchecked; an empty collection means no dependencies are available.</summary>
     public IReadOnlyDictionary<string, Version>? AvailableAssemblies { get; init; }

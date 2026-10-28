@@ -40,6 +40,18 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateCatalogItem
 {
+    /// <summary>Gets the publisher-declared maintenance state; null means unknown.</summary>
+    [JsonPropertyName("maintenanceStatus")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MaintenanceStatus { get; init; }
+    /// <summary>Gets the product's functional category slug.</summary>
+    [JsonPropertyName("category")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Category { get; init; }
+    /// <summary>Gets the intended audience slug, for example developer or operator.</summary>
+    [JsonPropertyName("audience")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Audience { get; init; }
     /// <summary>
     /// Gets the unique product identifier.
     /// </summary>

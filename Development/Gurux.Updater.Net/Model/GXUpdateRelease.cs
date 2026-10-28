@@ -40,6 +40,10 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateRelease
 {
+    /// <summary>Gets the publisher-declared supported AMI version range; null means unknown.</summary>
+    [JsonPropertyName("amiVersionRange")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AmiVersionRange { get; init; }
     /// <summary>Gets exact assembly dependencies; null means metadata is unavailable.</summary>
     [JsonPropertyName("references")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

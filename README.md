@@ -510,9 +510,54 @@ loading or executing their code. Native DLLs are skipped.
 For a release alone, call `GXModuleCompatibility.Check(release, available)`.
 Matching requires exactly the same assembly version; newer versions are not automatically
 accepted. This checks versions, not API or behavioral compatibility. When `AvailableAssemblies`
-is null, existing update discovery remains available and `Compatibility` is null.
+is null and neither a declared AMI range nor an installed AMI version is supplied,
+existing update discovery remains available and `Compatibility` is null.
 The check reports compatibility for the latest recommended release; it does not select an
 older compatible release automatically. Restart the catalog server after updating its scripts.
+
+### Project metadata and Works with AMI
+
+`GXUpdateCatalogItem` exposes optional `MaintenanceStatus`, `Category` and `Audience`.
+Project maintainers set these in Catalog's `catalog-sources.json` independently of
+module releases. Maintenance values are `active`, `minimal`, `seeking-maintainer`
+and `unsupported`. Category and audience are lowercase slugs; missing values mean
+unknown. Project support is informational and does not replace per-release
+`IsUnsupported` or `IsRevoked` flags. Check results also expose the project metadata.
+
+The Tool supports case-insensitive filters, combined with AND, alongside product
+type filters, `--product`, `--count`, `--prerelease` and `--json`:
+
+```powershell
+dotnet Gurux.Updater.Tool.dll check --catalog-url https://gurux.github.io/Gurux.AMI.Catalog/catalog.json --maintenance-status active --category communication --audience operator --json
+dotnet Gurux.Updater.Tool.dll --list-modules --audience developer
+```
+
+Filters alone select catalog listing using the default catalog URL. Products without
+the requested field do not match. Filters cannot be used for installed product checks,
+publishing, localization, manufacturer listings or installation.
+
+`GXUpdateRelease.AmiVersionRange` contains the maintainer-declared **Works with AMI**
+range, for example `[4.1.2610.2701,5.0)`. Supply `GXUpdateTarget.AmiVersion` to check it,
+and `AvailableAssemblies` to additionally check exact DLL requirements. A declared range
+without a supplied host version remains unknown and prevents offering the module update.
+If DLL checks are requested, missing dependency metadata also prevents approval. This
+does not execute the package or guarantee behavioral compatibility.
+
+```powershell
+dotnet Gurux.Updater.Tool.dll check --product Gurux.AMI.SMTP --current-version 1.0.1 --ami-version 4.1.2610.2701
+```
+
+The package reader preserves `amiVersionRange` from a matching root
+`module.compatibility.json` sidecar; ZIP publishing sends it to the writable catalog
+server. Old packages without this field keep their existing behavior. `IGXModule`
+does not need new members. Calendar module versions such as `1.0.2610.2801` compare
+numerically with old versions such as `1.0.1`; existing published versions stay intact.
+
+Run the catalog metadata and CLI regression tests with:
+
+```powershell
+dotnet test Development/Catalog.Tests/Catalog.Tests.csproj
+```
 
 ## Standalone C# scripts
 

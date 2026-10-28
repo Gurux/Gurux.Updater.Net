@@ -93,6 +93,7 @@ public sealed class GXCatalogUpdateService
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        GXCatalogMetadata.ValidateAmiVersionRange(metadata.AmiVersionRange);
         if (metadata.References is not null) GXModuleCompatibility.ValidateReferences(metadata.References);
         await using FileStream file = File.OpenRead(packagePath);
         using (ZipArchive zip = new(file, ZipArchiveMode.Read, leaveOpen: true))
@@ -113,6 +114,7 @@ public sealed class GXCatalogUpdateService
         {
             fields.Add(new("name", metadata.Name));
         }
+        if (metadata.AmiVersionRange is not null) fields.Add(new("amiVersionRange", metadata.AmiVersionRange));
         if (metadata.References is not null)
             fields.Add(new("references", JsonSerializer.Serialize(metadata.References, JsonOptions)));
 
@@ -304,8 +306,9 @@ public sealed class GXCatalogUpdateService
             var recommended = applicable.Where(x => !x.Release.IsRevoked && !x.Release.IsUnsupported)
                 .OrderByDescending(x => x.Version, VersionComparer.VersionRelease).FirstOrDefault();
             bool available = recommended.Release is not null && VersionComparer.VersionRelease.Compare(recommended.Version, installed) > 0;
-            var compatibility = item.Type == CatalogProductType.Module && recommended.Release is not null && target.AvailableAssemblies is not null
-                ? GXModuleCompatibility.Check(recommended.Release, target.AvailableAssemblies) : null;
+            var compatibility = item.Type == CatalogProductType.Module && recommended.Release is not null &&
+                (target.AvailableAssemblies is not null || target.AmiVersion is not null || recommended.Release.AmiVersionRange is not null)
+                ? GXModuleCompatibility.Check(recommended.Release, target.AvailableAssemblies, target.AmiVersion) : null;
             bool blocked = available && compatibility is { IsCompatible: false };
             if (blocked) available = false;
             GXUpdateStatus status = installedReleases.Any(x => x.Release.IsRevoked) ? GXUpdateStatus.Revoked :
@@ -323,6 +326,7 @@ public sealed class GXCatalogUpdateService
                 CurrentVersion = current, LatestVersion = release?.Version ?? string.Empty,
                 Status = status, UpdateAvailable = available,
                 Compatibility = compatibility,
+                MaintenanceStatus = item.MaintenanceStatus, Category = item.Category, Audience = item.Audience,
                 Priority = path.Length == 0 ? GXUpdatePriority.Normal : path.Max(x => x.Priority),
                 IsSecurityUpdate = path.Any(x => x.IsSecurityUpdate),
                 ReleaseNotes = release?.ReleaseNotes, ReleaseUrl = release?.ReleaseUrl, Asset = blocked ? null : release?.Asset
@@ -357,6 +361,7 @@ public sealed class GXCatalogUpdateService
 
         return new GXUpdateRelease
         {
+            AmiVersionRange = release.AmiVersionRange,
             References = release.References?.Select(x => new GXAssemblyReference { Name = x.Name, Version = x.Version }).ToList(),
             Version = release.Version,
             Priority = release.Priority,
@@ -383,6 +388,9 @@ public sealed class GXCatalogUpdateService
         HashSet<string> ids = new(StringComparer.Ordinal);
         foreach (GXUpdateCatalogItem item in catalog.Items)
         {
+            GXCatalogMetadata.ValidateClassification(item.MaintenanceStatus, "maintenanceStatus");
+            GXCatalogMetadata.ValidateClassification(item.Category, "category");
+            GXCatalogMetadata.ValidateClassification(item.Audience, "audience");
             if (string.IsNullOrWhiteSpace(item.Id))
             {
                 throw new InvalidDataException("Catalog item ID is required.");
@@ -394,6 +402,7 @@ public sealed class GXCatalogUpdateService
 
             foreach (GXUpdateRelease release in item.Releases)
             {
+                GXCatalogMetadata.ValidateAmiVersionRange(release.AmiVersionRange);
                 if (release.References is not null) GXModuleCompatibility.ValidateReferences(release.References);
                 if (!Enum.IsDefined(release.Priority))
                 {

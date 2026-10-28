@@ -1,3 +1,35 @@
+//
+// --------------------------------------------------------------------------
+//  Gurux Ltd
+// 
+//
+//
+// Filename:        $HeadURL$
+//
+// Version:         $Revision$,
+//                  $Date$
+//                  $Author$
+//
+// Copyright (c) Gurux Ltd
+//
+//---------------------------------------------------------------------------
+//
+//  DESCRIPTION
+//
+// This file is a part of Gurux Device Framework.
+//
+// Gurux Device Framework is Open Source software; you can redistribute it
+// and/or modify it under the terms of the GNU General Public License 
+// as published by the Free Software Foundation; version 2 of the License.
+// Gurux Device Framework is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of 
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+// See the GNU General Public License for more details.
+//
+// This code is licensed under the GNU General Public License v2. 
+// Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
+//---------------------------------------------------------------------------
+
 using Gurux.Updater.Enums;
 using Gurux.Updater.Model;
 using System.IO.Compression;
@@ -84,7 +116,7 @@ public static class GXCatalogPackageReader
             {
                 string[] versions = mains.Select(x => x.Version ?? DepsVersion(zip, x) ?? x.AssemblyVersion).Distinct().ToArray();
                 string version = versions.Length == 1 ? versions[0] : string.Empty;
-                return new GXCatalogPackageInfo { Type = CatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-'), References = MergeReferences(mains, assemblies) };
+                return ReadDeclaredCompatibility(zip, new GXCatalogPackageInfo { Type = CatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-'), References = MergeReferences(mains, assemblies) });
             }
         }
         if (mains.Count == 0)
@@ -107,7 +139,7 @@ public static class GXCatalogPackageReader
         string id = module ? main.Modules.Count == 1 ? main.Modules[0].Id ?? string.Empty : string.Empty : main.Name;
         string? name = module && main.Modules.Count == 1 ? main.Modules[0].Name : main.Name;
         string versionValue = main.Version ?? DepsVersion(zip, main) ?? main.AssemblyVersion;
-        return new GXCatalogPackageInfo
+        return ReadDeclaredCompatibility(zip, new GXCatalogPackageInfo
         {
             References = MergeReferences([main], assemblies),
             Id = id,
@@ -115,7 +147,28 @@ public static class GXCatalogPackageReader
             Type = module ? CatalogProductType.Module : CatalogProductType.Application,
             Version = versionValue,
             IsPrerelease = versionValue.Contains('-')
-        };
+        });
+    }
+
+    private static GXCatalogPackageInfo ReadDeclaredCompatibility(ZipArchive zip, GXCatalogPackageInfo package)
+    {
+        var entries = zip.Entries.Where(x => x.FullName == "module.compatibility.json").ToArray();
+        if (entries.Length == 0) return package;
+        if (entries.Length != 1 || entries[0].Length > 64 * 1024)
+            throw new InvalidDataException("Invalid module compatibility sidecar.");
+        using var input = entries[0].Open();
+        using var metadata = JsonDocument.Parse(input);
+        var root = metadata.RootElement;
+        if (root.GetProperty("schemaVersion").GetInt32() != 1 ||
+            root.GetProperty("id").GetString() != package.Id ||
+            root.GetProperty("version").GetString()?.Split('+')[0] != package.Version.Split('+')[0])
+            throw new InvalidDataException("Module compatibility sidecar identity/version mismatch.");
+        if (root.TryGetProperty("amiVersionRange", out var range))
+        {
+            package.AmiVersionRange = range.GetString() ?? throw new InvalidDataException("Invalid amiVersionRange.");
+            GXCatalogMetadata.ValidateAmiVersionRange(package.AmiVersionRange);
+        }
+        return package;
     }
 
     private static List<GXAssemblyReference> MergeReferences(IEnumerable<AssemblyInfo> mains, List<AssemblyInfo> assemblies)
