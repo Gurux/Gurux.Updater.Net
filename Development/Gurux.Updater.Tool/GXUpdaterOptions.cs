@@ -596,6 +596,11 @@ Options:
   --local <zip>              Install a local ZIP without GitHub or version checks.
   --destination <directory> Destination directory for local installation.
   --current-version <version> Installed catalog product version; requires --product.
+  --ami-version <version>    Installed AMI version for a catalog product check.
+  --maintenance-status <status> Filter projects: active, minimal, seeking-maintainer, unsupported.
+  --category <slug>          Filter products by function, for example communication.
+  --audience <slug>          Filter products by intended users, for example developer.
+                            Product filters combine with AND and ignore letter case.
   --targets <file>           Check multiple applications/add-ins from a JSON file.
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.

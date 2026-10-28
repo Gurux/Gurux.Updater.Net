@@ -27,31 +27,6 @@ Run the installed tool:
 gurux-updater --help
 ```
 
-## Build and pack from source
-
-Build from the repository root with the .NET 10 SDK:
-
-```shell
-dotnet build Gurux.Updater.slnx -c Release
-dotnet run --project Gurux.Updater -- --help
-```
-
-Create the `Gurux.Updater.Tool` package from the CLI project:
-
-```shell
-dotnet pack Gurux.Updater/Gurux.Updater.csproj -c Release -o artifacts
-```
-
-To install this local development package:
-
-```shell
-dotnet tool install --global Gurux.Updater.Tool --add-source ./artifacts --version 0.0.1-local
-```
-
-The CLI project defaults to version `0.0.1-local` when `BUILD_BUILDNUMBER` is not
-set. Use the generated package version when installing a build with a different
-version. After installation, invoke the tool as `gurux-updater`.
-
 ## Use the library
 
 ### Local development catalog
@@ -554,10 +529,6 @@ does not need new members. Calendar module versions such as `1.0.2610.2801` comp
 numerically with old versions such as `1.0.1`; existing published versions stay intact.
 
 Run the catalog metadata and CLI regression tests with:
-
-```powershell
-dotnet test Development/Catalog.Tests/Catalog.Tests.csproj
-```
 
 ## Standalone C# scripts
 

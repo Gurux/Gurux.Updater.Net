@@ -40,7 +40,14 @@ namespace Gurux.Updater.Services;
 public static class GXModuleCompatibility
 {
     /// <summary>Checks a release against the host's available DLL basenames and assembly versions.</summary>
-    public static GXModuleCompatibilityResult Check(GXUpdateRelease release, IReadOnlyDictionary<string, Version>? assemblies, string? amiVersion = null)
+    public static GXModuleCompatibilityResult Check(GXUpdateRelease release, IReadOnlyDictionary<string, Version> assemblies)
+    {
+        ArgumentNullException.ThrowIfNull(assemblies);
+        return Check(release, assemblies, null);
+    }
+
+    /// <summary>Checks the declared AMI range and optionally the host DLL versions.</summary>
+    public static GXModuleCompatibilityResult Check(GXUpdateRelease release, IReadOnlyDictionary<string, Version>? assemblies, string? amiVersion)
     {
         ArgumentNullException.ThrowIfNull(release);
         bool? amiMatches = GXCatalogMetadata.MatchesAmiVersion(release, amiVersion);

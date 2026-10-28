@@ -307,7 +307,7 @@ public sealed class GXCatalogUpdateService
                 .OrderByDescending(x => x.Version, VersionComparer.VersionRelease).FirstOrDefault();
             bool available = recommended.Release is not null && VersionComparer.VersionRelease.Compare(recommended.Version, installed) > 0;
             var compatibility = item.Type == CatalogProductType.Module && recommended.Release is not null &&
-                (target.AvailableAssemblies is not null || target.AmiVersion is not null || recommended.Release.AmiVersionRange is not null)
+                (target.AvailableAssemblies is not null || recommended.Release.AmiVersionRange is not null)
                 ? GXModuleCompatibility.Check(recommended.Release, target.AvailableAssemblies, target.AmiVersion) : null;
             bool blocked = available && compatibility is { IsCompatible: false };
             if (blocked) available = false;

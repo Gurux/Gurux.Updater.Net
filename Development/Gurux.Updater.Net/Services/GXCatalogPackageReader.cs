@@ -49,6 +49,10 @@ public static class GXCatalogPackageReader
     /// <summary>Infers the main product, module ID and version from .NET metadata inside a ZIP.</summary>
     /// <remarks>Computed or ambiguous module IDs are returned empty so callers can supply --product.</remarks>
     public static GXCatalogPackageInfo Read(string packagePath)
+        => Read(packagePath, null, null, null);
+
+    /// <summary>Reads a ZIP using explicit identity overrides, then validates its declared compatibility.</summary>
+    public static GXCatalogPackageInfo Read(string packagePath, string? product, CatalogProductType? productType, string? productVersion)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
         using ZipArchive zip = ZipFile.OpenRead(packagePath);
@@ -116,7 +120,7 @@ public static class GXCatalogPackageReader
             {
                 string[] versions = mains.Select(x => x.Version ?? DepsVersion(zip, x) ?? x.AssemblyVersion).Distinct().ToArray();
                 string version = versions.Length == 1 ? versions[0] : string.Empty;
-                return ReadDeclaredCompatibility(zip, new GXCatalogPackageInfo { Type = CatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-'), References = MergeReferences(mains, assemblies) });
+                return ApplyOverrides(zip, new GXCatalogPackageInfo { Type = CatalogProductType.Module, Version = version, IsPrerelease = version.Contains('-'), References = MergeReferences(mains, assemblies) }, product, productType, productVersion);
             }
         }
         if (mains.Count == 0)
@@ -131,6 +135,8 @@ public static class GXCatalogPackageReader
 
         if (mains.Count != 1)
         {
+            if (product is not null && productType is not null && productVersion is not null)
+                return ApplyOverrides(zip, new GXCatalogPackageInfo { Name = product }, product, productType, productVersion);
             throw new InvalidDataException("ZIP does not identify one deployable .NET application or module. Include its main .deps.json or .runtimeconfig.json metadata.");
         }
 
@@ -139,7 +145,7 @@ public static class GXCatalogPackageReader
         string id = module ? main.Modules.Count == 1 ? main.Modules[0].Id ?? string.Empty : string.Empty : main.Name;
         string? name = module && main.Modules.Count == 1 ? main.Modules[0].Name : main.Name;
         string versionValue = main.Version ?? DepsVersion(zip, main) ?? main.AssemblyVersion;
-        return ReadDeclaredCompatibility(zip, new GXCatalogPackageInfo
+        return ApplyOverrides(zip, new GXCatalogPackageInfo
         {
             References = MergeReferences([main], assemblies),
             Id = id,
@@ -147,7 +153,17 @@ public static class GXCatalogPackageReader
             Type = module ? CatalogProductType.Module : CatalogProductType.Application,
             Version = versionValue,
             IsPrerelease = versionValue.Contains('-')
-        });
+        }, product, productType, productVersion);
+    }
+
+    private static GXCatalogPackageInfo ApplyOverrides(ZipArchive zip, GXCatalogPackageInfo package,
+        string? product, CatalogProductType? productType, string? productVersion)
+    {
+        if (product is not null) package.Id = product;
+        if (productType is not null) package.Type = productType.Value;
+        if (productVersion is not null) package.Version = productVersion;
+        package.IsPrerelease = package.Version.Split('+')[0].Contains('-');
+        return ReadDeclaredCompatibility(zip, package);
     }
 
     private static GXCatalogPackageInfo ReadDeclaredCompatibility(ZipArchive zip, GXCatalogPackageInfo package)
