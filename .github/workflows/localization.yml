@@ -1,0 +1,21 @@
+name: Localization regression tests
+on:
+  push:
+    paths: ['Development/**', '.github/workflows/**']
+  pull_request:
+    paths: ['Development/**', '.github/workflows/**']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test Development/Localization.Tests --configuration Release --nologo
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s Development/tests-content-release -v

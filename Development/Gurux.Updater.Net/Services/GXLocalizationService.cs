@@ -92,9 +92,13 @@ public sealed class GXLocalizationService
             }
             IEnumerable<GXLocalizationRelease> releases = item.Releases.Where(x => includePrereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease)
                 .OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease);
+            if (item.Releases.Any(x => x.Culture != null) && !allVersions)
+                releases = releases.Where(x => x.Culture != null);
+            if (culture != null && item.Releases.Any(x => x.Culture != null))
+                releases = releases.Where(x => string.Equals(x.Culture, culture, StringComparison.OrdinalIgnoreCase));
             if (!allVersions)
             {
-                releases = releases.Take(1);
+                releases = releases.GroupBy(x => x.Culture).Select(x => x.First());
             }
             // A default listing describes the current package, not an older package with a removed culture.
             if (culture != null)
@@ -134,6 +138,7 @@ public sealed class GXLocalizationService
         byte[] bytes = await reader.ReadAsync(packagePath, cancellationToken);
         var package = GXLocalizationJson.Read<GXLocalizationPackage>(bytes, packagePath);
         GXLocalizationJson.ValidatePackage(package);
+        if (package.SchemaVersion != 1) throw new InvalidOperationException("Use the source publisher for schema 2 immutable language releases.");
         GXLocalizationCatalog catalog = File.Exists(catalogPath)
             ? await GetCatalogAsync(catalogPath, cancellationToken) : new();
         var item = catalog.Items.SingleOrDefault(x => x.Owner == package.Owner);
@@ -149,6 +154,8 @@ public sealed class GXLocalizationService
         {
             throw new InvalidOperationException($"Owner '{package.Owner}' has type '{item.OwnerType}', not '{package.OwnerType}'.");
         }
+        if (item?.Releases.Any(x => x.Culture != null) == true)
+            throw new InvalidOperationException("Owner has migrated to language packages; new legacy releases are disabled.");
         NuGetVersion version = GXLocalizationJson.Version(package.Version);
         var previous = item?.Releases.SingleOrDefault(x => VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), version));
         if (previous != null && !replace)
@@ -201,14 +208,18 @@ public sealed class GXLocalizationService
     /// <summary>Copies/downloads a compatible package and verifies its size, SHA-256, JSON and catalog metadata before publishing the output.</summary>
     public async Task<string> DownloadAsync(string catalogSource, string owner, string outputDirectory,
         string? ownerVersion = null, string? version = null, bool includePrereleases = false,
-        IProgress<GXUpdateProgress>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<GXUpdateProgress>? progress = null, CancellationToken cancellationToken = default, string? culture = null)
     {
         var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
         var item = catalog.Items.SingleOrDefault(x => x.Owner == owner)
             ?? throw new KeyNotFoundException($"Localization owner '{owner}' was not found.");
         NuGetVersion? ownerValue = ownerVersion == null ? null : GXLocalizationJson.Version(ownerVersion);
         NuGetVersion? requested = version == null ? null : GXLocalizationJson.Version(version);
+        if (item.Releases.Any(x => x.Culture != null) && culture == null)
+            throw new ArgumentException("--culture is required for an owner with independent language packages. Legacy packages require an explicit legacy version through a legacy-only index.");
+        if (culture != null) culture = GXLocalizationJson.Culture(culture);
         var release = item.Releases.Where(x => (includePrereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease) &&
+                (culture == null ? x.Culture == null : x.Culture == culture || !item.Releases.Any(r => r.Culture != null) && x.Cultures.Contains(culture, StringComparer.OrdinalIgnoreCase)) &&
                 (requested == null || VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), requested)) &&
                 (ownerValue == null || x.OwnerVersionRange == null || VersionRange.Parse(x.OwnerVersionRange).Satisfies(ownerValue)))
             .OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease).FirstOrDefault()
@@ -218,7 +229,8 @@ public sealed class GXLocalizationService
 
     /// <summary>Updates a local JSON package or every JSON package inside a ZIP after validating the complete downloads.</summary>
     public async Task<bool> UpdatePackageAsync(string catalogSource, string packagePath, bool includePrereleases = false,
-        IProgress<GXUpdateProgress>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<GXUpdateProgress>? progress = null, CancellationToken cancellationToken = default, string? ownerVersion = null,
+        ICollection<GXLocalizationUpdateResult>? results = null)
     {
         if (reader.GetRemoteUri(packagePath) != null)
         {
@@ -228,48 +240,83 @@ public sealed class GXLocalizationService
         RejectLink(target);
         if (string.Equals(Path.GetExtension(target), ".zip", StringComparison.OrdinalIgnoreCase))
         {
-            return await UpdateArchiveAsync(catalogSource, target, includePrereleases, progress, cancellationToken);
+            return await UpdateArchiveAsync(catalogSource, target, includePrereleases, progress, cancellationToken, ownerVersion, results);
         }
         var installed = await ReadPackageAsync(target, cancellationToken);
-        var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
-        var item = catalog.Items.SingleOrDefault(x => x.Owner == installed.Owner);
-        if (item == null)
-        {
-            throw new InvalidOperationException("Localization owner is not published. Use publish <localization.json> first.");
-        }
-        if (item.OwnerType != installed.OwnerType)
-        {
-            throw new InvalidDataException($"Localization owner type does not match the installed package '{installed.Owner}'.");
-        }
-        var release = List(catalog, owner: installed.Owner, includePrereleases: includePrereleases).FirstOrDefault()?.Releases[0]
-            ?? throw new InvalidOperationException($"No matching localization release for '{installed.Owner}'.");
-        if (VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(release.Version), GXLocalizationJson.Version(installed.Version)) <= 0)
-        {
-            return false;
-        }
-        string staging = Path.Combine(Path.GetDirectoryName(target)!, ".gurux-localization-" + Guid.NewGuid().ToString("N"));
         try
         {
-            string downloaded = await DownloadReleaseAsync(catalogSource, item, release, staging, progress, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            RejectLink(target);
-            File.Move(downloaded, target, true);
-            return true;
+            var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
+            var item = catalog.Items.SingleOrDefault(x => x.Owner == installed.Owner);
+            if (item == null)
+            {
+                throw new InvalidOperationException("Localization owner is not published. Use publish <localization.json> first.");
+            }
+            if (item.OwnerType != installed.OwnerType)
+            {
+                throw new InvalidDataException($"Localization owner type does not match the installed package '{installed.Owner}'.");
+            }
+            var release = SelectUpdate(item, installed, includePrereleases, ownerVersion)
+                ?? throw new InvalidOperationException($"No matching localization release for '{installed.Owner}'.");
+            if (VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(release.Version), GXLocalizationJson.Version(installed.Version)) <= 0)
+            {
+                results?.Add(new(installed.Owner, installed.Culture, installed.Version, release.Version, false, null));
+                return false;
+            }
+            string staging = Path.Combine(Path.GetDirectoryName(target)!, ".gurux-localization-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string downloaded = await DownloadReleaseAsync(catalogSource, item, release, staging, progress, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                RejectLink(target);
+                File.Move(downloaded, target, true);
+                results?.Add(new(installed.Owner, installed.Culture, installed.Version, release.Version, true, null));
+                return true;
+            }
+            finally
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            }
         }
-        finally
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            if (Directory.Exists(staging)) Directory.Delete(staging, true);
+            results?.Add(new(installed.Owner, installed.Culture, installed.Version, "", false, ex.Message));
+            throw;
         }
     }
 
+    private static GXLocalizationRelease? SelectUpdate(GXLocalizationCatalogItem item, GXLocalizationPackage installed, bool prereleases, string? ownerVersion)
+    {
+        if (installed.Culture == null && item.Releases.Any(x => x.Culture != null))
+            throw new InvalidOperationException($"Owner '{installed.Owner}' uses independent language packages. Migrate explicitly by downloading each --culture into separate files; the legacy all-language package is never replaced by one language.");
+        var owner = ownerVersion == null ? null : GXLocalizationJson.Version(ownerVersion);
+        return item.Releases.Where(x => x.Culture == installed.Culture && (prereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease) &&
+            (owner == null || x.OwnerVersionRange == null || VersionRange.Parse(x.OwnerVersionRange).Satisfies(owner)))
+            .OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease).FirstOrDefault();
+    }
+
+    /// <summary>Checks the latest compatible version without downloading or replacing a language.</summary>
+    public async Task<GXLocalizationUpdateResult> StatusAsync(string catalogSource, string packagePath, string? ownerVersion = null,
+        bool includePrereleases = false, CancellationToken cancellationToken = default)
+    {
+        var package = await ReadPackageAsync(packagePath, cancellationToken);
+        var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
+        var item = catalog.Items.SingleOrDefault(x => x.Owner == package.Owner) ?? throw new InvalidDataException($"Owner '{package.Owner}' is not published.");
+        if (item.OwnerType != package.OwnerType) throw new InvalidDataException("Installed owner type differs from catalog.");
+        var release = SelectUpdate(item, package, includePrereleases, ownerVersion) ?? throw new InvalidOperationException($"No compatible release for '{package.Owner}/{package.Culture}'.");
+        return new(package.Owner, package.Culture, package.Version, release.Version,
+            VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(release.Version), GXLocalizationJson.Version(package.Version)) > 0, null);
+    }
+
     private async Task<bool> UpdateArchiveAsync(string catalogSource, string target, bool includePrereleases,
-        IProgress<GXUpdateProgress>? progress, CancellationToken cancellationToken)
+        IProgress<GXUpdateProgress>? progress, CancellationToken cancellationToken, string? ownerVersion,
+        ICollection<GXLocalizationUpdateResult>? results)
     {
         string staging = Path.Combine(Path.GetDirectoryName(target)!, ".gurux-localization-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(staging);
         string replacement = Path.Combine(staging, "updated.zip");
         bool updated = false;
         int packages = 0;
+        List<GXLocalizationUpdateResult> stagedResults = [];
         try
         {
             using (var input = ZipFile.OpenRead(target))
@@ -282,13 +329,17 @@ public sealed class GXLocalizationService
                     if (!entry.FullName.EndsWith('/') && entry.FullName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
                         // Use an independent name so archive paths never become filesystem paths.
-                        package = Path.Combine(staging, $"{packages++}.json");
+                        string candidate = Path.Combine(staging, $"{packages}.json");
                         await using (var source = entry.Open())
-                        await using (var destination = File.Create(package))
+                        await using (var destination = File.Create(candidate))
                         {
                             await source.CopyToAsync(destination, cancellationToken);
                         }
-                        updated |= await UpdatePackageAsync(catalogSource, package, includePrereleases, progress, cancellationToken);
+                        if (IsLocalizationJson(await File.ReadAllBytesAsync(candidate, cancellationToken)))
+                        {
+                            package = candidate; ++packages;
+                            updated |= await UpdatePackageAsync(catalogSource, package, includePrereleases, progress, cancellationToken, ownerVersion, stagedResults);
+                        }
                     }
                     var copied = output.CreateEntry(entry.FullName);
                     copied.LastWriteTime = entry.LastWriteTime;
@@ -299,16 +350,38 @@ public sealed class GXLocalizationService
                 }
             }
             if (packages == 0) throw new InvalidDataException("The localization ZIP contains no JSON packages.");
-            if (!updated) return false;
+            if (!updated)
+            {
+                foreach (var result in stagedResults) results?.Add(result);
+                return false;
+            }
             cancellationToken.ThrowIfCancellationRequested();
             RejectLink(target);
             File.Move(replacement, target, true);
+            foreach (var result in stagedResults) results?.Add(result);
             return true;
+        }
+        catch
+        {
+            foreach (var result in stagedResults)
+                results?.Add(result with { Updated = false, Error = result.Error ?? (result.Updated ? "ZIP transaction rolled back; no languages installed." : null) });
+            throw;
         }
         finally
         {
             Directory.Delete(staging, true);
         }
+    }
+
+    private static bool IsLocalizationJson(byte[] bytes)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(bytes);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out _) &&
+                document.RootElement.TryGetProperty("owner", out _);
+        }
+        catch (JsonException) { return false; } // unrelated contents are preserved verbatim
     }
 
     private async Task<string> DownloadReleaseAsync(string catalogSource, GXLocalizationCatalogItem item,
@@ -317,7 +390,7 @@ public sealed class GXLocalizationService
         string source = reader.ResolveReference(catalogSource, release.Path);
         string directory = Path.GetFullPath(outputDirectory);
         Directory.CreateDirectory(directory);
-        string target = ManagedPath(directory, $"{item.Owner}-{GXLocalizationJson.Version(release.Version).ToNormalizedString()}.json");
+        string target = ManagedPath(directory, $"{item.Owner}{(release.Culture == null ? "" : "-" + release.Culture)}-{GXLocalizationJson.Version(release.Version).ToNormalizedString()}.json");
         if (reader.GetRemoteUri(source) == null && string.Equals(Path.GetFullPath(source), target, StringComparison.OrdinalIgnoreCase) ||
             reader.GetRemoteUri(catalogSource) == null && string.Equals(Path.GetFullPath(catalogSource), target, StringComparison.OrdinalIgnoreCase))
         {
@@ -384,7 +457,7 @@ public sealed class GXLocalizationService
         }
     }
 
-    private static string ManagedPath(string root, string relative)
+    internal static string ManagedPath(string root, string relative)
     {
         string path = Path.GetFullPath(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
         string relation = Path.GetRelativePath(root, path);
@@ -405,7 +478,7 @@ public sealed class GXLocalizationService
         return path;
     }
 
-    private static void RejectLink(string path)
+    internal static void RejectLink(string path)
     {
         if ((File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
         {

@@ -1,0 +1,61 @@
+name: Release localization and resources
+on:
+  workflow_call:
+    inputs:
+      sources:
+        type: string
+        default: content-sources.json
+      tag:
+        description: Existing content tag to retry; empty detects changed units
+        type: string
+        default: ''
+    secrets:
+      CATALOG_DISPATCH_TOKEN:
+        # Empty registries may run validation without enabling publication.
+        # The driver requires this before reserving any changed tag.
+        required: false
+permissions:
+  contents: write
+concurrency:
+  group: content-publication-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: source
+          persist-credentials: true
+      - uses: actions/checkout@v6
+        with:
+          repository: Gurux/Gurux.Updater.Net
+          ref: main
+          path: publisher
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify shared packager and publication state machine
+        run: |
+          dotnet test publisher/Development/Localization.Tests -c Release
+          python publisher/Development/scripts/publish_content.py --help
+          python -m unittest discover -s publisher/Development/tests-content-release -v
+      - name: Reserve changed tags, publish immutable assets, then notify Catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CATALOG_TOKEN: ${{ secrets.CATALOG_DISPATCH_TOKEN }}
+          SOURCE_CONFIGURATION: ${{ inputs.sources }}
+          RETRY_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          args=()
+          if [[ -n "$RETRY_TAG" ]]; then args+=(--tag "$RETRY_TAG"); fi
+          python publisher/Development/scripts/publish_content.py --root source --sources "$SOURCE_CONFIGURATION" \
+            --validator "$GITHUB_WORKSPACE/publisher/Development/Gurux.Updater.Tool/bin/Release/net10.0/Gurux.Updater.Tool.dll" \
+            --repository "$GITHUB_REPOSITORY" "${args[@]}"

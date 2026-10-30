@@ -88,6 +88,12 @@ public class GXLocalizationMetadata
 /// <summary>One immutable package release referenced by an index.</summary>
 public sealed class GXLocalizationRelease : GXLocalizationMetadata
 {
+    /// <summary>Single culture for schema 2; null identifies a legacy all-language release.</summary>
+    [JsonPropertyName("culture"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Culture { get; init; }
+    /// <summary>Deterministic hash of resources and effective metadata, excluding version.</summary>
+    [JsonPropertyName("contentSha256"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ContentSha256 { get; init; }
     /// <summary>Supported culture names.</summary>
     [JsonPropertyName("cultures")]
     public List<string> Cultures { get; init; } = [];
@@ -103,8 +109,12 @@ public sealed class GXLocalizationRelease : GXLocalizationMetadata
 }
 
 /// <summary>A complete source snapshot of all languages for one owner.</summary>
+[JsonConverter(typeof(Gurux.Updater.Services.GXLocalizationPackageConverter))]
 public sealed class GXLocalizationPackage : GXLocalizationMetadata
 {
+    /// <summary>Single culture for schema 2. Resources retain the library's culture map representation.</summary>
+    [JsonPropertyName("culture")]
+    public string? Culture { get; init; }
     /// <summary>The supported package schema version.</summary>
     [JsonRequired, JsonPropertyName("schemaVersion")]
     public int SchemaVersion { get; init; } = 1;

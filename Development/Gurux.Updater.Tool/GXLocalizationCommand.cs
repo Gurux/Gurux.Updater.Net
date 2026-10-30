@@ -103,23 +103,33 @@ public static class GXLocalizationCommand
     {
         if (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             return "Up to date: all localization packages in the ZIP match or exceed catalog versions.";
-        var package = await service.ReadPackageAsync(path, cancellationToken);
-        var catalog = await service.GetCatalogAsync(index, cancellationToken);
-        var release = service.List(catalog, owner: package.Owner, includePrereleases: prereleases).First().Releases[0];
-        return $"Up to date: {package.Owner}, local {package.Version}, catalog {release.Version}.";
+        var status = await service.StatusAsync(index, path, includePrereleases: prereleases, cancellationToken: cancellationToken);
+        return $"Up to date: {status.Owner}{(status.Culture == null ? "" : "/" + status.Culture)}, local {status.LocalVersion}, catalog {status.CatalogVersion}.";
     }
 
     /// <summary>CLI usage for the localization command group.</summary>
     public const string HelpText = """
+        gurux-updater localization validate-source --source <directory>
+            [--project <csproj> | --metadata-package <nupkg-or-zip>] [--owner <id>] [--owner-type application|module]
+            [--default-culture <culture>] [--owner-version-range <NuGet-range>]
+        gurux-updater localization plan|publish-sources
+            (--source <directory> [metadata overrides] | --sources <configuration.json>)
+            (--index <local-localization-index.json> | --catalog-url <http-or-https-url>) [--json]
+        gurux-updater localization status --package <local-json>
+            [--catalog-url <url> | --index <local-index>] [--owner-version <version>] [--json]
+        gurux-updater localization update --package <local-json-or-zip>
+            [--catalog-url <url> | --index <local-index>] [--owner-version <version>] [--json]
+        gurux-updater localization validate-store --index <local-localization-index.json>
         gurux-updater publish <localization.json> [--catalog-url <http-or-https-url>] [--json]
         gurux-updater localization list [--catalog-url <http-or-https-url>]
             [--owner <id>] [--owner-type application|module] [--culture <culture>]
             [--all-versions] [--include-prereleases] [--json]
         gurux-updater localization download [--catalog-url <http-or-https-url>] --owner <id> --output <directory>
-            [--owner-version <version>] [--version <package-version>] [--include-prereleases] [--json]
+            [--culture <culture>] [--owner-version <version>] [--version <package-version>] [--include-prereleases] [--json]
         gurux-updater localization validate [--catalog-url <http-or-https-url>] [--json]
         gurux-updater localization validate-package --package <local-json-file>
-        Default catalog: http://localhost:8000/catalog.json. Local catalog paths are unsupported.
+        Default catalog: http://localhost:8000/catalog.json. --index is supported by the new source/status/update/store commands.
+        publish-snapshot --snapshot <request.json> --index <path> and publish-package --package <v1.json> --index <path> are server entry points.
         """;
     /// <summary>Executes arguments following localization, with cancellation and separate progress diagnostics.</summary>
     public static async Task RunAsync(HttpClient client, string[] args, TextWriter output,
@@ -135,10 +145,15 @@ public static class GXLocalizationCommand
             return;
         }
         string command = args[0];
+        if (GXLocalizationSourceCommand.Handles(command))
+        {
+            await GXLocalizationSourceCommand.RunAsync(client, args, output, cancellationToken);
+            return;
+        }
         string[] permitted = command switch
         {
             "list" => ["--catalog-url", "--owner", "--owner-type", "--culture", "--all-versions", "--include-prereleases", "--json"],
-            "download" => ["--catalog-url", "--owner", "--output", "--owner-version", "--version", "--include-prereleases", "--json"],
+            "download" => ["--catalog-url", "--owner", "--output", "--culture", "--owner-version", "--version", "--include-prereleases", "--json"],
             "validate" => ["--catalog-url", "--json"],
             "validate-package" => ["--package"],
             _ => throw new ArgumentException($"Unknown localization command '{command}'.\n{HelpText}")
@@ -226,7 +241,7 @@ public static class GXLocalizationCommand
                 try
                 {
                     path = await service.DownloadAsync(source, Required("--owner"), Required("--output"), Optional("--owner-version"),
-                        Optional("--version"), Has("--include-prereleases"), progress, cancellationToken);
+                        Optional("--version"), Has("--include-prereleases"), progress, cancellationToken, Optional("--culture"));
                 }
                 finally
                 {

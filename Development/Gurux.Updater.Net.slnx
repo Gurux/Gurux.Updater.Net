@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="Gurux.Updater.Net/Gurux.Updater.Net.csproj" />
   <Project Path="Gurux.Updater.Tool/Gurux.Updater.Tool.csproj" />
+  <Project Path="Localization.Tests/Localization.Tests.csproj" />
 </Solution>

@@ -1,0 +1,22 @@
+name: Publish changed content
+on:
+  push:
+    branches: [main]
+    paths: ['Development/content/**', 'Development/content-sources.json', '**/*.csproj', '**/*.props', '**/*.targets', '**/*.nuspec', '**/*.nupkg', '**/*.zip']
+    tags: ['localization/*/*/v*', 'resources/*/*/v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to retry; empty detects changes
+        type: string
+        default: ''
+permissions:
+  contents: write
+jobs:
+  publish:
+    uses: ./.github/workflows/release-content.yml
+    with:
+      sources: Development/content-sources.json
+      tag: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || '' }}
+    secrets:
+      CATALOG_DISPATCH_TOKEN: ${{ secrets.CATALOG_DISPATCH_TOKEN }}

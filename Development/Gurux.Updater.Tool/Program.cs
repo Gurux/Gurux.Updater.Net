@@ -56,6 +56,12 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "content")
+            {
+                using var contentClient = new HttpClient();
+                await GXContentCommand.RunAsync(contentClient, args[1..], Console.Out);
+                return 0;
+            }
             if (args.Length > 0 && args[0] == "script")
             {
                 using var cancellation = new CancellationTokenSource();
@@ -160,6 +166,12 @@ internal static class Program
         }
         catch (Exception ex)
         {
+            if (args.Length >= 2 && args[0] == "localization" && args[1] is "publish-snapshot" or "publish-package" &&
+                ex is InvalidDataException or InvalidOperationException or ArgumentException)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new { valid = false, error = ex.Message }));
+                return ex is InvalidOperationException ? 3 : 2;
+            }
             if (args.Length >= 2 && args[0] == "script" && args[1] == "validate-manifest" && ex is InvalidDataException or JsonException)
             {
                 Console.Out.WriteLine(JsonSerializer.Serialize(new { valid = false, error = ex.Message }));
