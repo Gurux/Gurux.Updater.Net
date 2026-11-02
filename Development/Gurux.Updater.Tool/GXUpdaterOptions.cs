@@ -605,6 +605,10 @@ Options:
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.
   --list-manufacturer-settings List available profiles (no profile downloads).
+
+  register-module --project <csproj> --modules-root <directory> --catalog-root <directory>
+                  [--category <slug>] [--audience <slug>] [--dry-run] [--json]
+                  Register a local module project; use register-module --help for all options.
   --list-localizations       List the latest localization packages from the catalog.
   --localization <json-or-zip-file> Update JSON packages using their owners and versions.
   --list-agents              List all catalog agents (combine with --list-modules or --list-applications).

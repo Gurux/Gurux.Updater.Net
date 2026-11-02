@@ -66,6 +66,7 @@ using Gurux.Updater.Enums;
 using Gurux.Updater.Model;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Xml;
 
 namespace Gurux.Updater.Services;
 
@@ -74,7 +75,6 @@ namespace Gurux.Updater.Services;
 /// </summary>
 public sealed class GXDeviceProfileUpdateService
 {
-    private static readonly int SupportedSchemaVersion = 1;
     private static readonly JsonSerializerOptions JsonReadOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
@@ -302,18 +302,35 @@ public sealed class GXDeviceProfileUpdateService
 
         try
         {
-            JsonDocument.Parse(bytes);
+            if (entry.Format == "xml")
+            {
+                using var source = new MemoryStream(bytes);
+                using var reader = XmlReader.Create(source, new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null
+                });
+                while (reader.Read()) { }
+            }
+            else if (entry.Format == "json")
+            {
+                using var document = JsonDocument.Parse(bytes);
+            }
+            else
+            {
+                throw new InvalidDataException($"Unsupported profile format '{entry.Format}'.");
+            }
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or XmlException)
         {
             throw new InvalidDataException(
-                $"Profile '{entry.Id}' does not contain valid JSON.", ex);
+                $"Profile '{entry.Id}' does not contain valid {entry.Format}.", ex);
         }
     }
 
     private static void ValidateIndex(GXDeviceProfileIndex index)
     {
-        if (index.SchemaVersion != SupportedSchemaVersion)
+        if (index.SchemaVersion is not (1 or 2))
         {
             throw new InvalidDataException(
                 $"Unsupported device profile index schema version '{index.SchemaVersion}'.");
@@ -359,6 +376,14 @@ public sealed class GXDeviceProfileUpdateService
         {
             foreach (GXDeviceProfileModel model in manufacturer.Models)
             {
+                if (index.SchemaVersion == 2)
+                {
+                    foreach (GXDeviceProfileEntry entry in model.Interfaces.SelectMany(i => i.Versions).SelectMany(v => v.Settings))
+                    {
+                        yield return entry;
+                    }
+                    continue;
+                }
                 // Structure: <manufacturer>/<model>/<profile>
                 foreach (GXDeviceProfileEntry entry in model.Settings)
                 {

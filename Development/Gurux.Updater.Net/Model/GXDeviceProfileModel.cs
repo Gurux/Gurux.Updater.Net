@@ -39,6 +39,14 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXDeviceProfileModel
 {
+    /// <summary>Gets the optional model image.</summary>
+    [JsonPropertyName("image")]
+    public GXDeviceProfileImage? Image { get; init; }
+
+    /// <summary>Gets interface-specific profiles in schema version 2.</summary>
+    [JsonPropertyName("interfaces")]
+    public List<GXDeviceProfileInterface> Interfaces { get; init; } = [];
+
     /// <summary>
     /// Gets the display name of the model.
     /// </summary>

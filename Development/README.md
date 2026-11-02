@@ -1,4 +1,4 @@
-# Gurux.Updater.Net
+﻿# Gurux.Updater.Net
 
 A .NET 10 library and command-line tool for checking GitHub releases and updating
 applications and add-ins. The library provides update discovery, asset downloads,
@@ -125,6 +125,78 @@ their separate public index default with `--list-manufacturer-settings`.
 With that option, `--catalog-url` also accepts an update catalog containing
 `Gurux.DLMS.DeviceProfiles`; the tool follows the latest stable release's
 `manufacturers.json` asset to list the settings.
+
+Manufacturer logos and model images are optional. In DeviceProfiles, add
+`<manufacturer>/logo.png` and `<manufacturer>/<model>/image.png`. The generated
+index includes an `Image` object containing `Location`, `Sha256` and `Size` at
+each corresponding level. Image URLs point to the same commit as the profiles.
+Publish the updated DeviceProfiles index before using these images.
+
+```shell
+Gurux.Updater.Tool.exe check --list-manufacturer-settings --json
+```
+
+JSON rows include optional `manufacturerImage` and `modelImage` objects. Listing
+does not download image files. The library reads schema 1 and schema 2 indexes;
+use `GXDeviceProfileImageService` to fetch an image when it is needed:
+
+```csharp
+using var http = new HttpClient();
+var profiles = new GXDeviceProfileUpdateService(http);
+var index = await profiles.GetIndexAsync();
+var manufacturer = index.Manufacturers.First();
+if (manufacturer.Image is { } image)
+{
+    string path = await new GXDeviceProfileImageService(http)
+        .GetImageAsync(image, Path.Combine("cache", "device-images"));
+    // Display the local PNG at path. Model images use model.Image in the same way.
+}
+```
+
+The cache uses SHA-256 filenames and verifies size and checksum before reuse.
+Corrupt cached files are downloaded again; invalid downloads are never installed.
+Catalogs without images continue to work and omit the image fields in CLI JSON.
+
+
+Register an existing module project in both local repositories:
+
+```powershell
+dotnet Gurux.Updater.Tool.dll register-module `
+  --project C:\Projects\Gurux.AMI.Modules\Gurux.AMI.Scalar\Gurux.AMI.Scalar.csproj `
+  --modules-root C:\Projects\Gurux.AMI.Modules `
+  --catalog-root C:\Projects\Gurux.AMI.Catalog `
+  --category api-documentation --audience developer --dry-run
+```
+
+Remove `--dry-run` to apply the previewed registration. The command updates
+`modules.json` and `catalog-sources.json`; both files must already exist. Add
+`--json` for a machine-readable result containing the module ID and both resulting
+registries, including paths and change flags. `register-module --help` lists all
+options.
+
+The .NET SDK evaluates Release configuration metadata and imported targets without
+building or restoring. The effective target framework must be `net10.0` and the project or an imported props
+file must set `<AmiModuleCompatibilityMetadata>true</AmiModuleCompatibilityMetadata>`.
+The Modules repository must already have its release workflow. The command checks
+for the `AmiWriteCompatibilityMetadata` and `ZipPublish` targets in the
+preprocessed project. Registration does not create these targets or modify
+the project; it does not execute a release build to verify their outputs.
+
+The module ID comes from `PackageId` (fallback `AssemblyName`), its display name
+from `Title` (fallback the ID suffix), and its description from `Description`.
+Use `--name`, `--description`, or `--repository owner/repository` to override
+inferred values. Optional `--id` must match the evaluated PackageId so the catalog
+uses the same identity as the published ZIP and compatibility metadata. A GitHub
+`RepositoryUrl` supplies the repository; if absent, the default is `Gurux/Gurux.AMI.Modules`. Optional `--category`, `--audience` and
+`--maintenance-status` set catalog classifications.
+
+Repeated registration preserves curated metadata unless explicitly overridden,
+along with unknown properties and existing content source settings. Required
+changelog paths are added without removing custom paths. Conflicting IDs, project
+paths or repository/release rules stop registration. Invalid metadata does not
+change either registry; a failed second replacement rolls back the first.
+Registration performs no commits, pushes, releases, localization or asset discovery.
+Commit the changes in each repository to use their existing publication workflows.
 
 `GXCatalogUpdateService` can read catalogs served by the local catalog project:
 

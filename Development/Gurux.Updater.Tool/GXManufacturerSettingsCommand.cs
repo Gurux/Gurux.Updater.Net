@@ -39,7 +39,13 @@ namespace Gurux.Updater.Tool;
 /// <summary>Lists the public DeviceProfiles index without downloading individual settings.</summary>
 public static class GXManufacturerSettingsCommand
 {
-    private sealed record Setting(string Manufacturer, string Model, string Interface, string Version, string Id, string Name, string Location);
+    private sealed record Setting(string Manufacturer, string Model, string Interface, string Version, string Id, string Name, string Location,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GXDeviceProfileImage? ManufacturerImage,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GXDeviceProfileImage? ModelImage);
+
+    private static GXDeviceProfileImage? ReadImage(JsonElement element) =>
+        element.TryGetProperty("Image", out var image) && image.ValueKind != JsonValueKind.Null
+            ? image.Deserialize<GXDeviceProfileImage>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null;
 
     /// <summary>Fetches the manufacturer index, then writes a table or JSON array of available settings.</summary>
     public static async Task RunAsync(HttpClient client, GXUpdaterOptions options, TextWriter output, CancellationToken cancellationToken = default)
@@ -65,7 +71,8 @@ public static class GXManufacturerSettingsCommand
                         {
                             settings.Add(new(manufacturer.GetProperty("Name").GetString()!, model.GetProperty("Name").GetString()!,
                                 connection.GetProperty("Name").GetString()!, version.GetProperty("Name").GetString()!,
-                                setting.GetProperty("Id").GetString()!, setting.GetProperty("Name").GetString()!, setting.GetProperty("Location").GetString()!));
+                                setting.GetProperty("Id").GetString()!, setting.GetProperty("Name").GetString()!, setting.GetProperty("Location").GetString()!,
+                                ReadImage(manufacturer), ReadImage(model)));
                         }
                     }
                 }

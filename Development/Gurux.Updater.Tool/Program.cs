@@ -56,6 +56,11 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "register-module")
+            {
+                await GXRegisterModuleCommand.RunAsync(args[1..], Console.Out);
+                return 0;
+            }
             if (args.Length > 0 && args[0] == "content")
             {
                 using var contentClient = new HttpClient();

@@ -40,6 +40,10 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXDeviceProfileEntry
 {
+    /// <summary>Gets the profile serialization format: json (default) or xml.</summary>
+    [JsonPropertyName("format")]
+    public string Format { get; init; } = "json";
+
     /// <summary>
     /// Gets the permanent, index-wide unique identifier for this profile.
     /// </summary>

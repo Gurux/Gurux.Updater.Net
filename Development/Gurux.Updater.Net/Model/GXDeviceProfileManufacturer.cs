@@ -39,6 +39,10 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXDeviceProfileManufacturer
 {
+    /// <summary>Gets the optional manufacturer logo.</summary>
+    [JsonPropertyName("image")]
+    public GXDeviceProfileImage? Image { get; init; }
+
     /// <summary>
     /// Gets the display name of the manufacturer.
     /// </summary>
