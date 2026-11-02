@@ -169,7 +169,13 @@ along with unknown properties and existing content source settings. Required
 changelog paths are added without removing custom paths. Conflicting IDs, project
 paths or repository/release rules stop registration. Invalid metadata does not
 change either registry; a failed second replacement rolls back the first.
-Registration performs no commits, pushes, releases, localization or asset discovery.
+Registration performs no commits, pushes, releases or content package registration.
+If the project's `assets` directory contains one image, registration records its
+repository-relative `iconPath` and Catalog `iconUrl` without copying it. Use
+`--icon assets/MyIcon.svg` to select among multiple images. Existing icon settings
+are preserved unless explicitly overridden with `--icon`. Catalog fetches the
+image from the selected module release tag on each publication; commit icon
+changes and publish a new module version to update the public image automatically.
 Commit the changes in each repository to use their existing publication workflows.
 
 `GXCatalogUpdateService` can read catalogs served by the local catalog project:

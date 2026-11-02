@@ -40,6 +40,11 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateCatalogItem
 {
+    /// <summary>Gets the optional product icon URL, including its content cache key.</summary>
+    [JsonPropertyName("iconUrl")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IconUrl { get; init; }
+
     /// <summary>Gets the publisher-declared maintenance state; null means unknown.</summary>
     [JsonPropertyName("maintenanceStatus")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

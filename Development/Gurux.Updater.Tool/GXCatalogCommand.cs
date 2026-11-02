@@ -98,6 +98,7 @@ public static class GXCatalogCommand
                 Id = item.Id,
                 Type = item.Type,
                 Name = item.Name,
+                IconUrl = item.IconUrl,
                 Description = item.Description,
                 Repository = item.Repository,
                 MaintenanceStatus = item.MaintenanceStatus,
