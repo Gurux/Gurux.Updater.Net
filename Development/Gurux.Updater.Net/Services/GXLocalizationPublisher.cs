@@ -101,6 +101,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
 
     static async Task<Dictionary<string, string>> ProjectMetadataAsync(GXLocalizationSource source, string directory, CancellationToken token)
     {
+        // Explicit content releases must not execute even metadata targets in a module project.
+        if (source.Project == null && source.MetadataPackage == null && source.Owner != null && source.OwnerType != null &&
+            source.DefaultCulture != null && source.OwnerVersionRange != null)
+            return new(StringComparer.Ordinal);
         if (source.MetadataPackage != null)
         {
             if (source.Project != null) throw new InvalidDataException("Choose project or metadataPackage for inference.");
@@ -152,18 +156,25 @@ public sealed class GXLocalizationPublisher(HttpClient client)
     public static string ContentHash(GXLocalizationPackage package)
     {
         GXLocalizationJson.ValidatePackage(package);
-        if (package.SchemaVersion != 2) throw new InvalidDataException("Content hashes apply to schema 2 language packages.");
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
         {
-            writer.WriteStartObject(); writer.WriteNumber("schemaVersion", 2);
+            writer.WriteStartObject(); writer.WriteNumber("schemaVersion", package.SchemaVersion);
             writer.WriteString("owner", package.Owner); writer.WriteString("ownerType", package.OwnerType);
             writer.WriteString("culture", package.Culture); writer.WriteString("defaultCulture", package.DefaultCulture);
             writer.WriteString("ownerVersionRange", package.OwnerVersionRange == null ? null : VersionRange.Parse(package.OwnerVersionRange).ToNormalizedString());
             writer.WriteString("description", GXLocalizationJson.EffectiveDescription(package.Owner, package.OwnerType, package.Description));
             writer.WriteString("releaseNotes", package.ReleaseNotes);
             writer.WritePropertyName("resources"); writer.WriteStartObject();
-            foreach (var pair in package.Resources[package.Culture!].OrderBy(x => x.Key, StringComparer.Ordinal)) writer.WriteString(pair.Key, pair.Value);
+            if (package.SchemaVersion == 2)
+                foreach (var pair in package.Resources[package.Culture!].OrderBy(x => x.Key, StringComparer.Ordinal)) writer.WriteString(pair.Key, pair.Value);
+            else
+                foreach (var culture in package.Resources.OrderBy(x => x.Key, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(culture.Key); writer.WriteStartObject();
+                    foreach (var pair in culture.Value.OrderBy(x => x.Key, StringComparer.Ordinal)) writer.WriteString(pair.Key, pair.Value);
+                    writer.WriteEndObject();
+                }
             writer.WriteEndObject(); writer.WriteEndObject();
         }
         return Convert.ToHexString(SHA256.HashData(buffer.ToArray())).ToLowerInvariant();

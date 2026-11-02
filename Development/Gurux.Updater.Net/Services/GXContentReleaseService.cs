@@ -72,11 +72,14 @@ public sealed class GXContentReleaseService(HttpClient client)
         GXLocalizationJson.ValidateOwner(manifest.Owner, manifest.OwnerType);
         GXLocalizationJson.ValidateOwner(manifest.Unit, "application");
         if (manifest.SchemaVersion != 1 || manifest.Kind is not ("localization" or "resources") ||
-            !Regex.IsMatch(manifest.Version, @"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z") ||
+            !Regex.IsMatch(manifest.Version, manifest.ModulePackage ? @"\A\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z" : @"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z") ||
             manifest.Size <= 0 || !Regex.IsMatch(manifest.Sha256, @"\A[0-9a-f]{64}\z") || !Regex.IsMatch(manifest.ContentSha256, @"\A[0-9a-f]{64}\z"))
             throw new InvalidDataException("Invalid immutable content release manifest.");
         _ = GXLocalizationJson.Version(manifest.Version);
-        if (manifest.Kind == "localization" && GXLocalizationJson.Culture(manifest.Unit) != manifest.Unit)
+        if (manifest.ModulePackage && (manifest.OwnerType != "module" || !manifest.Owner.StartsWith("Gurux.AMI.", StringComparison.Ordinal) ||
+            manifest.Unit != (manifest.Kind == "localization" ? "all" : "asset") || string.IsNullOrWhiteSpace(manifest.OwnerVersionRange)))
+            throw new InvalidDataException("Module content requires a module owner, all/asset unit and explicit ownerVersionRange.");
+        if (!manifest.ModulePackage && manifest.Kind == "localization" && GXLocalizationJson.Culture(manifest.Unit) != manifest.Unit)
             throw new InvalidDataException("Noncanonical release culture.");
         if (manifest.OwnerVersionRange != null && (!VersionRange.TryParse(manifest.OwnerVersionRange, out var range) || range.IsFloating))
             throw new InvalidDataException("Invalid content compatibility range.");
@@ -100,6 +103,73 @@ public sealed class GXContentReleaseService(HttpClient client)
         return result;
     }
     sealed class Configuration { [System.Text.Json.Serialization.JsonRequired] public List<GXContentSource> Sources { get; init; } = []; }
+
+    /// <summary>Builds one explicitly versioned module bundle; never evaluates or builds its module project.</summary>
+    public async Task<GXPreparedContent> BuildModuleAsync(GXContentSource source, string version, CancellationToken token = default)
+    {
+        if (source.OwnerType != "module" || string.IsNullOrWhiteSpace(source.OwnerVersionRange) ||
+            !VersionRange.TryParse(source.OwnerVersionRange, out var range) || range.IsFloating || range.MinVersion == null && range.MaxVersion == null ||
+            source.Project != null || source.MetadataPackage != null)
+            throw new InvalidDataException("Module content requires explicit ownerVersionRange and source metadata, without project evaluation.");
+        GXLocalizationService.ManagedPath(System.IO.Path.GetPathRoot(System.IO.Path.GetFullPath(source.Directory))!, System.IO.Path.GetFullPath(source.Directory));
+        if (!Directory.Exists(source.Directory)) throw new InvalidDataException("Module content source directory is missing.");
+        GXPreparedContent prepared;
+        if (source.Kind == "localization")
+        {
+            foreach (string path in Directory.EnumerateFileSystemEntries(source.Directory))
+                if (Directory.Exists(path) || System.IO.Path.GetExtension(path) != ".json" || System.IO.Path.GetFileName(path).StartsWith('.') || System.IO.Path.GetFileName(path) == "localization.json")
+                    throw new InvalidDataException("Module localization source may contain only culture JSON files.");
+            var snapshot = await new GXLocalizationPublisher(client).ReadSourcesAsync([source], token);
+            var package = new GXLocalizationPackage
+            {
+                SchemaVersion = 1, Owner = source.Owner!, OwnerType = "module", Version = version,
+                DefaultCulture = source.DefaultCulture!, OwnerVersionRange = source.OwnerVersionRange,
+                Resources = snapshot.Packages.OrderBy(x => x.Culture, StringComparer.Ordinal).ToDictionary(x => x.Culture!, x => x.Resources[x.Culture!])
+            };
+            GXLocalizationJson.ValidatePackage(package);
+            if (package.Resources.Values.Any(x => x.Count == 0)) throw new InvalidDataException("Empty module language resources.");
+            byte[] bytes = Json(package);
+            prepared = new(new() { Kind = "localization", Owner = package.Owner, OwnerType = "module", Unit = "all", Version = version,
+                OwnerVersionRange = source.OwnerVersionRange, ContentSha256 = GXLocalizationPublisher.ContentHash(package), Sha256 = Hash(bytes), Size = bytes.Length, ModulePackage = true }, bytes);
+        }
+        else if (source.Kind == "resources")
+        {
+            source.Name = "asset";
+            ValidateAssetDirectory(source.Directory);
+            var original = (await BuildUnitsAsync([source], "1.0.0", token)).Single();
+            var files = ResourceFiles(original.Manifest, original.Bytes);
+            byte[] bytes = ResourceZip(source.Owner!, "module", "asset", source.OwnerVersionRange, version, files);
+            prepared = new(new() { Kind = "resources", Owner = source.Owner!, OwnerType = "module", Unit = "asset", Version = version,
+                OwnerVersionRange = source.OwnerVersionRange, ContentSha256 = original.Manifest.ContentSha256, Sha256 = Hash(bytes), Size = bytes.Length, ModulePackage = true }, bytes);
+        }
+        else throw new InvalidDataException("Module content kind must be localization or resources.");
+        ValidatePackage(prepared.Manifest, prepared.Bytes);
+        return prepared;
+    }
+
+    static void ValidateAssetDirectory(string directory)
+    {
+        GXLocalizationService.RejectLink(directory);
+        foreach (string path in Directory.EnumerateFileSystemEntries(directory))
+        {
+            GXLocalizationService.RejectLink(path);
+            string name = System.IO.Path.GetFileName(path);
+            if (name.StartsWith('.') || name.Equals("bin", StringComparison.OrdinalIgnoreCase) || name.Equals("obj", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Forbidden asset path: {path}");
+            if (Directory.Exists(path)) ValidateAssetDirectory(path);
+            else ValidateModuleAsset(name);
+        }
+    }
+
+    internal static void ValidateModuleAsset(string path)
+    {
+        ValidateResourcePath(path);
+        string[] extensions = [".json", ".xml", ".txt", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".css", ".html", ".woff", ".woff2", ".ttf", ".otf"];
+        if (path.Split('/').Any(x => x.StartsWith('.') || x.Equals("bin", StringComparison.OrdinalIgnoreCase) || x.Equals("obj", StringComparison.OrdinalIgnoreCase)) ||
+            !extensions.Contains(System.IO.Path.GetExtension(path), StringComparer.OrdinalIgnoreCase) ||
+            Regex.IsMatch(path, "secret|credential|appsettings|password|private[-_]?key", RegexOptions.IgnoreCase))
+            throw new InvalidDataException($"Forbidden module asset: {path}");
+    }
 
     /// <summary>Compares each registered unit with its latest reserved/published tag. Pending tags must be retried before calling.</summary>
     public async Task<List<GXPreparedContent>> PrepareAsync(IEnumerable<GXContentSource> sources, IEnumerable<GXContentManifest> history, CancellationToken token = default,
@@ -294,7 +364,7 @@ public sealed class GXContentReleaseService(HttpClient client)
             ResourceZip(manifest.Owner, manifest.OwnerType, manifest.Unit, manifest.OwnerVersionRange, version, files));
     }
 
-    static SortedDictionary<string, byte[]> ResourceFiles(GXContentManifest manifest, byte[] bytes, bool checkVersion = true)
+    internal static SortedDictionary<string, byte[]> ResourceFiles(GXContentManifest manifest, byte[] bytes, bool checkVersion = true)
     {
         using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
         var files = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
@@ -307,7 +377,7 @@ public sealed class GXContentReleaseService(HttpClient client)
             if (entry.FullName == "resource-package.json")
             { if (metadata != null) throw new InvalidDataException("Duplicate resource metadata."); metadata = buffer.ToArray(); }
             else
-            { ValidateResourcePath(entry.FullName); if (!files.TryAdd(entry.FullName, buffer.ToArray())) throw new InvalidDataException("Duplicate resource ZIP entry."); }
+            { ValidateResourcePath(entry.FullName); if (manifest.ModulePackage) ValidateModuleAsset(entry.FullName); if (!files.TryAdd(entry.FullName, buffer.ToArray())) throw new InvalidDataException("Duplicate resource ZIP entry."); }
         }
         if (metadata == null || files.Count == 0)
             throw new InvalidDataException("Resource package metadata/files missing.");
@@ -332,7 +402,7 @@ public sealed class GXContentReleaseService(HttpClient client)
         { _ = ResourceFiles(manifest, bytes); return; }
         var package = GXLocalizationJson.Read<GXLocalizationPackage>(bytes, manifest.Package);
         GXLocalizationJson.ValidatePackage(package);
-        if (package.SchemaVersion != 2 || package.Owner != manifest.Owner || package.OwnerType != manifest.OwnerType || package.Culture != manifest.Unit ||
+        if (package.SchemaVersion != (manifest.ModulePackage ? 1 : 2) || package.Owner != manifest.Owner || package.OwnerType != manifest.OwnerType || (!manifest.ModulePackage && package.Culture != manifest.Unit) ||
             package.Version != manifest.Version || package.OwnerVersionRange != manifest.OwnerVersionRange || GXLocalizationPublisher.ContentHash(package) != manifest.ContentSha256)
             throw new InvalidDataException("Release package identity/content does not match manifest.");
     }
@@ -358,13 +428,14 @@ public sealed class GXContentReleaseService(HttpClient client)
                 throw new InvalidDataException("Catalog owner identity conflict.");
             if (item == null)
             { item = new() { Owner = manifest.Owner, OwnerType = manifest.OwnerType }; catalog.Items.Add(item); }
-            var previous = item.Releases.SingleOrDefault(x => x.Culture == manifest.Unit && VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), GXLocalizationJson.Version(manifest.Version)));
+            var previous = item.Releases.SingleOrDefault(x => x.Culture == (manifest.ModulePackage ? null : manifest.Unit) && VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), GXLocalizationJson.Version(manifest.Version)));
             if (previous != null)
             { await ExistingAsync(previous.Sha256, target, manifest, bytes, token); return; }
             item.Releases.Add(new()
             {
-                Culture = manifest.Unit,
-                Cultures = [manifest.Unit],
+                Culture = manifest.ModulePackage ? null : manifest.Unit,
+                ModulePackage = manifest.ModulePackage,
+                Cultures = package.Resources.Keys.Order(StringComparer.Ordinal).ToList(),
                 Version = manifest.Version,
                 OwnerVersionRange = manifest.OwnerVersionRange,
                 DefaultCulture = package.DefaultCulture,

@@ -61,6 +61,7 @@ nunit-*.xml
 /Gurux.Updater.Tool.Tests
 /Updater.Tests
 Development/catalog-update-example.json
-/Tests
+/Tests/*
+!/Tests/ModuleContent.Tests/
 __pycache__/
 *.py[cod]

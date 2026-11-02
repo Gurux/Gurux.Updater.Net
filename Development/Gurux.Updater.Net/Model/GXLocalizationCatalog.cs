@@ -88,6 +88,9 @@ public class GXLocalizationMetadata
 /// <summary>One immutable package release referenced by an index.</summary>
 public sealed class GXLocalizationRelease : GXLocalizationMetadata
 {
+    /// <summary>True for a module-prefixed all-language release.</summary>
+    [JsonPropertyName("modulePackage"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ModulePackage { get; init; }
     /// <summary>Single culture for schema 2; null identifies a legacy all-language release.</summary>
     [JsonPropertyName("culture"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Culture { get; init; }

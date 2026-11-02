@@ -46,6 +46,9 @@ public sealed class GXContentSource : GXLocalizationSource
 /// <summary>Immutable annotated-tag and GitHub Release manifest.</summary>
 public sealed class GXContentManifest
 {
+    /// <summary>Module-prefixed independently versioned all-language or asset package.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ModulePackage { get; init; }
     /// <summary>Manifest protocol version.</summary>
     [JsonRequired] public int SchemaVersion { get; init; } = 1;
     /// <summary>localization or resources.</summary>
@@ -67,9 +70,9 @@ public sealed class GXContentManifest
     /// <summary>Exact artifact size.</summary>
     public long Size { get; init; }
     /// <summary>Namespace isolates content tags from binary module tags.</summary>
-    public string Tag => $"{Kind}/{Owner}/{Unit}/v{Version}";
+    public string Tag => ModulePackage ? $"{Owner}/{(Kind == "localization" ? "localization" : "assets")}/v{Version}" : $"{Kind}/{Owner}/{Unit}/v{Version}";
     /// <summary>GitHub Release asset filename.</summary>
-    public string Package => $"{Kind}-{Owner}-{Unit}-{Version}.{(Kind == "localization" ? "json" : "zip")}";
+    public string Package => ModulePackage ? $"{Owner}-{(Kind == "localization" ? "localization" : "assets")}-{Version}.{(Kind == "localization" ? "json" : "zip")}" : $"{Kind}-{Owner}-{Unit}-{Version}.{(Kind == "localization" ? "json" : "zip")}";
     /// <summary>Relative path in the kind-specific catalog directory.</summary>
     public string Path => $"packages/{Owner}/{Unit}/{Version}.{(Kind == "localization" ? "json" : "zip")}";
 }

@@ -42,11 +42,14 @@ internal static class GXContentCommand
     internal static async Task RunAsync(HttpClient client, string[] args, TextWriter output)
     {
         if (args.Length == 0)
-            throw new ArgumentException("content prepare|rebuild|verify-manifest|verify|import|validate-resources --sources <json> --history <json> --manifest <json> --package <file> --output <directory> --catalog-root <directory>");
+            throw new ArgumentException("content prepare|rebuild|build-module|verify-manifest|verify|import|validate-resources|list-module|check-module|update-module; module options: --sources <json> --version <version> --kind localization|resources --output <directory>, or --index <index> --owner <module> --owner-version <version> [--install <module-directory>]");
         string command = args[0];
         var allowed = command switch
         {
             "prepare" => new[] { "--sources", "--history", "--output" },
+            "build-module" => ["--sources", "--kind", "--version", "--output"],
+            "list-module" => ["--index", "--owner", "--kind", "--owner-version"],
+            "check-module" or "update-module" => ["--index", "--owner", "--kind", "--owner-version", "--install"],
             "rebuild" => ["--sources", "--manifest", "--output"],
             "verify" => ["--manifest", "--package"],
             "verify-manifest" => ["--manifest"],
@@ -63,11 +66,22 @@ internal static class GXContentCommand
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, NewLine = "\n" };
         GXContentManifest Manifest() => GXContentReleaseService.ReadManifest(File.ReadAllBytes(Get("--manifest")));
         object result;
-        if (command == "prepare" || command == "rebuild")
+        if (command is "list-module" or "check-module" or "update-module")
+        {
+            var modules = new GXModuleContentService(client);
+            string index = Get("--index"), owner = Get("--owner"), kind = Get("--kind"), version = Get("--owner-version");
+            result = command == "list-module" ? await modules.ListAsync(index, owner, kind, version)
+                : command == "check-module" ? new { updateAvailable = await modules.CheckAsync(index, owner, kind, version, Get("--install")) }
+                : (object)new { updated = await modules.UpdateAsync(index, owner, kind, version, Get("--install")) };
+        }
+        else if (command == "prepare" || command == "rebuild" || command == "build-module")
         {
             var sources = GXContentReleaseService.ReadSources(Get("--sources"));
             List<string> warnings = [];
-            var packages = command == "prepare" ? await service.PrepareAsync(sources, GXContentReleaseService.ReadHistory(File.ReadAllBytes(Get("--history"))), warnings: warnings)
+            if (command == "build-module" && (sources.Count != 1 || sources[0].Kind != Get("--kind")))
+                throw new ArgumentException("build-module requires exactly one source matching --kind.");
+            var packages = command == "build-module" ? new List<GXPreparedContent> { await service.BuildModuleAsync(sources.Single(), Get("--version")) }
+                : command == "prepare" ? await service.PrepareAsync(sources, GXContentReleaseService.ReadHistory(File.ReadAllBytes(Get("--history"))), warnings: warnings)
                 : [await service.RebuildAsync(sources, Manifest())];
             foreach (string warning in warnings)
                 await Console.Error.WriteLineAsync(warning);
