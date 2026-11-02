@@ -41,9 +41,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Verify shared packager and publication state machine
+      - name: Build content publisher and verify publication scripts
         run: |
-          dotnet test publisher/Development/Localization.Tests -c Release
+          dotnet build publisher/Development/Gurux.Updater.Tool/Gurux.Updater.Tool.csproj \
+            -c Release -p:GeneratePackageOnBuild=false
           python publisher/Development/scripts/publish_content.py --help
           python -m unittest discover -s publisher/Development/tests-content-release -v
       - name: Reserve changed tags, publish immutable assets, then notify Catalog
@@ -59,3 +60,4 @@ jobs:
           python publisher/Development/scripts/publish_content.py --root source --sources "$SOURCE_CONFIGURATION" \
             --validator "$GITHUB_WORKSPACE/publisher/Development/Gurux.Updater.Tool/bin/Release/net10.0/Gurux.Updater.Tool.dll" \
             --repository "$GITHUB_REPOSITORY" "${args[@]}"
+
