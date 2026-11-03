@@ -92,5 +92,5 @@ public sealed class GXDeploymentStatus
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-/// <summary>Only a catalog version crosses the application-to-updater boundary.</summary>
+/// <summary>Only a version and explicit restore intent cross the application-to-updater boundary.</summary>
 public sealed record GXDeploymentRequest(string Version, string? RequestId = null, string? Signature = null, bool RestorePrevious = false);

@@ -40,7 +40,9 @@ namespace Gurux.Updater.Services;
 public static class GXDeploymentAuthentication
 {
     /// <summary>Signs a canonical transaction ID and version using the installation's shared key.</summary>
-    public static GXDeploymentRequest Sign(string version, string requestId, string key, bool restorePrevious = false)
+    public static GXDeploymentRequest Sign(string version, string requestId, string key) => Sign(version, requestId, key, false);
+    /// <summary>Signs the transaction identity and explicit restore intent.</summary>
+    public static GXDeploymentRequest Sign(string version, string requestId, string key, bool restorePrevious)
     {
         GXDeploymentQueue.ValidateVersion(version);
         if (!Guid.TryParseExact(requestId, "N", out _))
