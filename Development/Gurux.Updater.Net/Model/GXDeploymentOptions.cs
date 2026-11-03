@@ -74,6 +74,8 @@ public sealed class GXDeploymentOptions
 /// <summary>Durable transaction journal and browser-visible outcome.</summary>
 public sealed class GXDeploymentStatus
 {
+    /// <summary>True when this transaction explicitly restored the recorded previous installation.</summary>
+    public bool RestorePrevious { get; set; }
     /// <summary>Compose recovery journal; contains host-owned paths and immutable image references.</summary>
     public GXComposeTransaction? Compose { get; set; }
     /// <summary>Internal transaction identifier, distinguishing retries of one version.</summary>
@@ -91,4 +93,4 @@ public sealed class GXDeploymentStatus
 }
 
 /// <summary>Only a catalog version crosses the application-to-updater boundary.</summary>
-public sealed record GXDeploymentRequest(string Version, string? RequestId = null, string? Signature = null);
+public sealed record GXDeploymentRequest(string Version, string? RequestId = null, string? Signature = null, bool RestorePrevious = false);

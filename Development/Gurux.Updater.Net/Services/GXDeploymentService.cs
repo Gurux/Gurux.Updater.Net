@@ -369,6 +369,50 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
             throw;
         }
     }
+    /// <summary>Restores the retained previous successful release without downloading an arbitrary older version.</summary>
+    public async Task RestorePreviousAsync(GXDeploymentOptions options, GXDeploymentRequest request, CancellationToken token = default)
+    {
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Atomic deployment requires Linux.");
+        ValidateOptions(options);
+        if (!request.RestorePrevious || !Guid.TryParseExact(request.RequestId, "N", out _)) throw new ArgumentException("An explicit restore transaction is required.");
+        using var gate = new FileStream(Path.Combine(options.Root, "deployment.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        string current = Current(options) ?? throw new InvalidDataException("No active installation.");
+        string currentVersion = Path.GetFileName(Path.GetFullPath(Path.Combine(options.Root, current)));
+        var previous = await GXDeploymentRestoration.ReadPreviousAsync(options.Root, currentVersion, false, token);
+        if (previous is null || request.Version != GXDeploymentRestoration.PreviousVersion(previous))
+            throw new InvalidDataException("Only the retained previous successful installation can be restored.");
+        string directory = Path.GetFullPath(Path.Combine(options.Root, previous.PreviousTarget!));
+        ValidateLayout(directory, options, request.Version);
+        await CheckAsync(options, Path.GetFullPath(Path.Combine(options.Root, current)), currentVersion, token);
+        var status = new GXDeploymentStatus { RequestId = request.RequestId, Version = request.Version, RestorePrevious = true, PreviousTarget = current, State = "Activating" };
+        var queue = new GXDeploymentQueue(options.Root);
+        await queue.WriteStatusAsync(status, token);
+        try
+        {
+            await RestoreAsync(options, previous);
+            status.State = "Verifying";
+            await queue.WriteStatusAsync(status);
+            await CheckAsync(options, directory, request.Version, token);
+            status.State = "Succeeded";
+            await queue.WriteStatusAsync(status);
+        }
+        catch (Exception error)
+        {
+            status.Error = error.Message; status.State = "RollingBack";
+            Exception? persistence = null;
+            try { await queue.WriteStatusAsync(status); } catch (Exception ex) { persistence = ex; }
+            try
+            {
+                await RestoreAsync(options, status);
+                await CheckAsync(options, Path.GetFullPath(Path.Combine(options.Root, current)), currentVersion, CancellationToken.None);
+                status.State = "RolledBack";
+            }
+            catch (Exception ex) { status.State = "RollbackFailed"; status.Error += " Restore: " + ex.Message; }
+            try { await queue.WriteStatusAsync(status); } catch (Exception ex) { persistence = ex; }
+            if (persistence is not null) throw new AggregateException("Restore outcome could not be persisted.", error, persistence);
+            throw;
+        }
+    }
     async Task RestoreAsync(GXDeploymentOptions options, GXDeploymentStatus status)
     {
         var manager = services ?? new GXSystemdServiceManager();

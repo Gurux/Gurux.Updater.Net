@@ -250,6 +250,47 @@ public sealed class GXComposeDeploymentService(HttpClient client, IGXComposeRunn
             throw;
         }
     }
+    /// <summary>Explicitly restores only the latest successful deployment's verified retained predecessor.</summary>
+    public async Task RestorePreviousAsync(GXDeploymentOptions options, GXDeploymentRequest request, CancellationToken token = default)
+    {
+        ValidateOptions(options);
+        if (!request.RestorePrevious || !Guid.TryParseExact(request.RequestId, "N", out _)) throw new ArgumentException("An explicit restore transaction is required.");
+        using var gate = new FileStream(Path.Combine(options.Root, "deployment.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        string current = await ReadVersionAsync(options, token);
+        var successful = await GXDeploymentRestoration.ReadPreviousAsync(options.Root, current, true, token);
+        if (successful?.Compose is not { } previous || request.Version != previous.PreviousVersion)
+            throw new InvalidDataException("Only the retained previous successful installation can be restored.");
+        await ValidateSnapshotAsync(options, previous);
+        await VerifyAsync(options, previous, current, token);
+        // Journal the current candidate as the recovery target before changing any container.
+        var recovery = new GXComposeTransaction
+        {
+            SnapshotFile = previous.SnapshotFile, SnapshotSha256 = previous.SnapshotSha256,
+            PreviousVersion = current, PreviousWasmVersion = current, ContainsWasm = previous.ContainsWasm,
+            PreviousImages = new(previous.NewImages), PreviousImageIds = new(previous.NewImageIds)
+        };
+        await ValidateSnapshotAsync(options, recovery);
+        var status = new GXDeploymentStatus { RequestId = request.RequestId, Version = request.Version, RestorePrevious = true, Compose = recovery, State = "Activating" };
+        var queue = new GXDeploymentQueue(options.Root);
+        await queue.WriteStatusAsync(status, token);
+        try
+        {
+            await RestoreAsync(options, previous);
+            status.State = "Succeeded";
+            await queue.WriteStatusAsync(status);
+        }
+        catch (Exception error)
+        {
+            status.Error = error.Message; status.State = "RollingBack";
+            Exception? persistence = null;
+            try { await queue.WriteStatusAsync(status); } catch (Exception ex) { persistence = ex; }
+            try { await RestoreAsync(options, recovery); status.State = "RolledBack"; }
+            catch (Exception ex) { status.State = "RollbackFailed"; status.Error += " Restore: " + ex.Message; }
+            try { await queue.WriteStatusAsync(status); } catch (Exception ex) { persistence = ex; }
+            if (persistence is not null) throw new AggregateException("Restore outcome could not be persisted.", error, persistence);
+            throw;
+        }
+    }
     async Task UpAsync(GXDeploymentOptions options, string snapshot, CancellationToken token)
     {
         var args = Arguments(options, snapshot);

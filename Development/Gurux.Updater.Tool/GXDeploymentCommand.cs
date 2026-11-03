@@ -97,19 +97,28 @@ internal static class GXDeploymentCommand
                         }
                         if (!options.IncludeBackend && options.ApiVersionUrl is not null)
                             options.ApiVersion = (await client.GetStringAsync(options.ApiVersionUrl, token)).Trim().Trim('"');
-                        var catalog = await new GXCatalogUpdateService(client).GetCatalogAsync(new Uri(options.CatalogUrl), token);
-                        var release = compose ? GXComposeDeploymentService.SelectRelease(catalog, options, request.Version) : GXDeploymentService.SelectRelease(catalog, options, request.Version);
-                        installationStarted = true;
-                        if (compose)
-                            await composeService!.InstallAsync(options, release, request, token);
+                        if (request.RestorePrevious)
+                        {
+                            // Saved local installation identity, never a catalog downgrade, authorizes restoration.
+                            if (compose) await composeService!.RestorePreviousAsync(options, request, token);
+                            else await service.RestorePreviousAsync(options, request, token);
+                        }
                         else
-                            await service.InstallAsync(options, release, token, request.RequestId);
+                        {
+                            var catalog = await new GXCatalogUpdateService(client).GetCatalogAsync(new Uri(options.CatalogUrl), token);
+                            var release = compose ? GXComposeDeploymentService.SelectRelease(catalog, options, request.Version) : GXDeploymentService.SelectRelease(catalog, options, request.Version);
+                            installationStarted = true;
+                            if (compose) await composeService!.InstallAsync(options, release, request, token);
+                            else await service.InstallAsync(options, release, token, request.RequestId);
+                        }
                         queue.CompleteRequest();
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException || !token.IsCancellationRequested)
                     {
                         // Never log configuration or private request headers.
                         Console.Error.WriteLine($"Deployment {request.Version} failed: {exception.Message}");
+                        if (request.RestorePrevious && (await queue.ReadStatusAsync())?.RequestId == request.RequestId)
+                            installationStarted = true;
                         await HandleFailureAsync(queue, request, installationStarted, exception);
                     }
                 }
