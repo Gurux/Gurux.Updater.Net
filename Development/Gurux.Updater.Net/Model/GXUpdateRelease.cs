@@ -40,6 +40,10 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXUpdateRelease
 {
+    /// <summary>Optional Compose installation metadata; old ZIP catalogs omit this property.</summary>
+    [JsonPropertyName("compose")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GXComposeRelease? Compose { get; init; }
     /// <summary>Gets the publisher-declared supported AMI version range; null means unknown.</summary>
     [JsonPropertyName("amiVersionRange")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

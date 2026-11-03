@@ -397,12 +397,23 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
         }
         else if (status?.State is "Succeeded" or "RolledBack" or "Failed")
         {
+            await queue.WriteStatusAsync(status);
             // A crash may occur after committing the result but before acknowledging the request.
             if (status.RequestId is not null && (await queue.ReadRequestAsync())?.RequestId == status.RequestId)
                 queue.CompleteRequest();
         }
     }
-    async Task CheckAsync(GXDeploymentOptions options, string directory, string version, CancellationToken token)
+    /// <summary>Verifies the public boot resources against a WASM tree copied from the deployed container.</summary>
+    public async Task VerifyPublicWasmAsync(string webRoot, string publicUrl, string version, int timeoutSeconds, CancellationToken token = default)
+    {
+        var options = new GXDeploymentOptions { PublicUrl = publicUrl, CheckTimeoutSeconds = timeoutSeconds };
+        ValidateLayout(webRoot, options, version);
+        using var response = await client.GetAsync(publicUrl, token); response.EnsureSuccessStatusCode();
+        string html = await response.Content.ReadAsStringAsync(token);
+        if (!html.Contains("blazor.web", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Public AMI page is missing its Blazor startup script.");
+        await CheckAsync(options, webRoot, version, token, checkIndex: false);
+    }
+    async Task CheckAsync(GXDeploymentOptions options, string directory, string version, CancellationToken token, bool checkIndex = true)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(options.CheckTimeoutSeconds));
@@ -415,7 +426,7 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
             {
                 try
                 {
-                    foreach (string path in new[] { "version.json", "index.html" }.Concat(BootstrapFiles(web)))
+                    foreach (string path in (checkIndex ? new[] { "version.json", "index.html" } : ["version.json"]).Concat(BootstrapFiles(web)))
                     {
                         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUri, path + "?gxupdate=" + Guid.NewGuid().ToString("N")));
                         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };

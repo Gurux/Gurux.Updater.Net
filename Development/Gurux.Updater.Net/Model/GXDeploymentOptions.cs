@@ -32,9 +32,17 @@
 
 namespace Gurux.Updater.Model;
 
-/// <summary>Trusted, server-owned configuration for one Linux deployment.</summary>
+/// <summary>Trusted, server-owned configuration for one deployment.</summary>
 public sealed class GXDeploymentOptions
 {
+    /// <summary>Installation method: static (default) or compose.</summary>
+    public string Mode { get; set; } = "static";
+    /// <summary>Host-only environment variable holding the HMAC request authentication key.</summary>
+    public string? RequestKeyEnvironmentVariable { get; set; }
+    /// <summary>Server-owned Compose project configuration.</summary>
+    public GXComposeOptions? Compose { get; set; }
+    /// <summary>Time allowed for AMI to finish sending Accepted before an unready request expires.</summary>
+    public int RequestReadyTimeoutSeconds { get; set; } = 120;
     /// <summary>Absolute installation root containing releases, current, queue and journal.</summary>
     public string Root { get; set; } = "";
     /// <summary>Trusted catalog URL, owned by the server administrator.</summary>
@@ -66,6 +74,8 @@ public sealed class GXDeploymentOptions
 /// <summary>Durable transaction journal and browser-visible outcome.</summary>
 public sealed class GXDeploymentStatus
 {
+    /// <summary>Compose recovery journal; contains host-owned paths and immutable image references.</summary>
+    public GXComposeTransaction? Compose { get; set; }
     /// <summary>Internal transaction identifier, distinguishing retries of one version.</summary>
     public string? RequestId { get; set; }
     /// <summary>Requested catalog version.</summary>
@@ -81,4 +91,4 @@ public sealed class GXDeploymentStatus
 }
 
 /// <summary>Only a catalog version crosses the application-to-updater boundary.</summary>
-public sealed record GXDeploymentRequest(string Version, string? RequestId = null);
+public sealed record GXDeploymentRequest(string Version, string? RequestId = null, string? Signature = null);

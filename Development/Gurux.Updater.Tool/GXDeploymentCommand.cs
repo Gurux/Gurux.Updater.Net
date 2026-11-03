@@ -44,11 +44,25 @@ internal static class GXDeploymentCommand
     {
         if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: Gurux.Updater.Tool deployment-agent --config /etc/gurux-ami/updater.json");
-        if (!OperatingSystem.IsLinux())
-            throw new PlatformNotSupportedException("Deployment agent requires Linux.");
         var options = JsonSerializer.Deserialize<GXDeploymentOptions>(await File.ReadAllTextAsync(args[1], token), new JsonSerializerOptions(JsonSerializerDefaults.Web))
             ?? throw new InvalidDataException("Empty deployment configuration.");
-        GXDeploymentService.ValidateOptions(options);
+        bool compose = options.Mode == "compose";
+        if (!compose && !OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Static deployment requires Linux.");
+        if (compose)
+            GXComposeDeploymentService.ValidateOptions(options);
+        else if (options.Mode == "static")
+            GXDeploymentService.ValidateOptions(options);
+        else
+            throw new ArgumentException("Unknown installation method.");
+        string? requestKey = null;
+        if (compose)
+        {
+            if (options.RequestReadyTimeoutSeconds < 1)
+                throw new ArgumentException("A positive response-ready timeout is required.");
+            requestKey = string.IsNullOrWhiteSpace(options.RequestKeyEnvironmentVariable) ? null : Environment.GetEnvironmentVariable(options.RequestKeyEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(requestKey))
+                throw new InvalidOperationException("Compose requests require a host-only HMAC key environment variable.");
+        }
         Directory.CreateDirectory(options.Root);
         Directory.CreateDirectory(Path.Combine(options.Root, "queue"));
         using var daemonLock = new FileStream(Path.Combine(options.Root, "agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -56,8 +70,12 @@ internal static class GXDeploymentCommand
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
         var service = new GXDeploymentService(client);
+        GXComposeDeploymentService? composeService = compose ? new(client, new GXComposeProcessRunner(options.Compose!.ProjectDirectory, options.Compose.CommandTimeoutSeconds)) : null;
         var queue = new GXDeploymentQueue(options.Root);
-        await service.RecoverAsync(options);
+        if (compose)
+            await composeService!.RecoverAsync(options);
+        else
+            await service.RecoverAsync(options);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
         var heartbeat = HeartbeatAsync(options.Root, lifetime.Token);
         try
@@ -70,12 +88,22 @@ internal static class GXDeploymentCommand
                     bool installationStarted = false;
                     try
                     {
+                        if (compose)
+                        {
+                            GXDeploymentAuthentication.Verify(request, requestKey!);
+                            // The backend publishes this only after the Accepted response has completed.
+                            if (!await IsResponseReadyAsync(queue, request, options.RequestReadyTimeoutSeconds))
+                            { await Task.Delay(1000, token); continue; }
+                        }
                         if (!options.IncludeBackend && options.ApiVersionUrl is not null)
                             options.ApiVersion = (await client.GetStringAsync(options.ApiVersionUrl, token)).Trim().Trim('"');
                         var catalog = await new GXCatalogUpdateService(client).GetCatalogAsync(new Uri(options.CatalogUrl), token);
-                        var release = GXDeploymentService.SelectRelease(catalog, options, request.Version);
+                        var release = compose ? GXComposeDeploymentService.SelectRelease(catalog, options, request.Version) : GXDeploymentService.SelectRelease(catalog, options, request.Version);
                         installationStarted = true;
-                        await service.InstallAsync(options, release, token, request.RequestId);
+                        if (compose)
+                            await composeService!.InstallAsync(options, release, request, token);
+                        else
+                            await service.InstallAsync(options, release, token, request.RequestId);
                         queue.CompleteRequest();
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException || !token.IsCancellationRequested)
@@ -97,6 +125,14 @@ internal static class GXDeploymentCommand
             File.Delete(Path.Combine(options.Root, "agent-heartbeat"));
         }
     }
+    internal static async Task<bool> IsResponseReadyAsync(GXDeploymentQueue queue, GXDeploymentRequest request, int timeoutSeconds)
+    {
+        if (File.Exists(Path.Combine(queue.Root, "queue", request.RequestId + ".ready")))
+            return true;
+        if (DateTime.UtcNow - File.GetLastWriteTimeUtc(Path.Combine(queue.Root, "queue", "request.json")) >= TimeSpan.FromSeconds(timeoutSeconds))
+            await HandleFailureAsync(queue, request, false, new TimeoutException("AMI did not finish its Accepted response. The request expired without replacing any container; submit it again."));
+        return false;
+    }
     internal static async Task HandleFailureAsync(GXDeploymentQueue queue, GXDeploymentRequest request, bool installationStarted, Exception exception)
     {
         if (installationStarted)
@@ -104,11 +140,12 @@ internal static class GXDeploymentCommand
             var status = await queue.ReadStatusAsync();
             // An installation that did not durably reach a safe terminal state must be recovered,
             // not overwritten by a generic failure that discards the previous-link journal.
-            if (status?.RequestId != request.RequestId || status?.Version != request.Version || status.State is not ("Failed" or "RolledBack" or "Succeeded"))
+            if (status?.RequestId != request.RequestId || status?.Version != request.Version || status.State is not ("Failed" or "RolledBack" or "Succeeded" or "MaintenanceRequired"))
                 throw new InvalidOperationException("Deployment outcome is uncertain; retaining journal and request for recovery.", exception);
+            await queue.WriteStatusAsync(status); // Repair terminal history before allowing the next request.
         }
         else
-            await queue.WriteStatusAsync(new() { RequestId = request.RequestId, Version = request.Version, State = "Failed", Error = exception.Message });
+            await queue.WriteStatusAsync(new() { RequestId = Guid.TryParseExact(request.RequestId, "N", out _) ? request.RequestId : null, Version = request.Version, State = "Failed", Error = exception.Message });
         queue.CompleteRequest();
     }
     static async Task HeartbeatAsync(string root, CancellationToken token)

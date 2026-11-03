@@ -65,9 +65,28 @@ public sealed class GXDeploymentQueue(string root)
     public async Task<GXDeploymentStatus?> ReadStatusAsync(CancellationToken token = default) => await ReadAsync<GXDeploymentStatus>("status.json", token);
     /// <summary>Atomically persists the transaction journal.</summary>
     public Task WriteStatusAsync(GXDeploymentStatus status, CancellationToken token = default)
-    { status.UpdatedAt = DateTimeOffset.UtcNow; return WriteAtomicAsync("status.json", status, token); }
+    { status.UpdatedAt = DateTimeOffset.UtcNow; return PersistStatusAsync(status, token); }
+    async Task PersistStatusAsync(GXDeploymentStatus status, CancellationToken token)
+    {
+        await WriteAtomicAsync("status.json", status, token);
+        if (status.RequestId is not null)
+        {
+            if (!Regex.IsMatch(status.RequestId, @"\A[A-Za-z0-9_-]{1,80}\z")) throw new InvalidDataException("Invalid transaction ID.");
+            Directory.CreateDirectory(Path.Combine(Root, "history"));
+            await WriteAtomicAsync("history/" + status.RequestId + ".json", status, token);
+        }
+    }
     /// <summary>Acknowledges the processed queue entry.</summary>
-    public void CompleteRequest() => File.Delete(Path.Combine(Root, "queue", "request.json"));
+    public void CompleteRequest()
+    {
+        var path = Path.Combine(Root, "queue", "request.json");
+        if (File.Exists(path))
+        {
+            var request = JsonSerializer.Deserialize<GXDeploymentRequest>(File.ReadAllText(path), Json);
+            if (Guid.TryParseExact(request?.RequestId, "N", out _)) File.Delete(Path.Combine(Root, "queue", request!.RequestId + ".ready"));
+        }
+        File.Delete(path);
+    }
     async Task<T?> ReadAsync<T>(string name, CancellationToken token)
     {
         try

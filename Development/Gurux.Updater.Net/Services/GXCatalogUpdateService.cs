@@ -361,6 +361,15 @@ public sealed class GXCatalogUpdateService
 
         return new GXUpdateRelease
         {
+            Compose = release.Compose is null ? null : new GXComposeRelease
+            {
+                Channel = release.Compose.Channel,
+                Platforms = release.Compose.Platforms.ToList(),
+                Images = new(release.Compose.Images, StringComparer.Ordinal),
+                ContainsWasm = release.Compose.ContainsWasm,
+                MaintenanceRequired = release.Compose.MaintenanceRequired,
+                RollbackCompatibleFrom = release.Compose.RollbackCompatibleFrom
+            },
             AmiVersionRange = release.AmiVersionRange,
             References = release.References?.Select(x => new GXAssemblyReference { Name = x.Name, Version = x.Version }).ToList(),
             Version = release.Version,
@@ -402,6 +411,7 @@ public sealed class GXCatalogUpdateService
 
             foreach (GXUpdateRelease release in item.Releases)
             {
+                if (release.Compose is not null) GXComposeDeploymentService.ValidateMetadata(release.Compose);
                 GXCatalogMetadata.ValidateAmiVersionRange(release.AmiVersionRange);
                 if (release.References is not null) GXModuleCompatibility.ValidateReferences(release.References);
                 if (!Enum.IsDefined(release.Priority))
