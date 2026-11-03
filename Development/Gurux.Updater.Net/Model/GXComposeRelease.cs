@@ -30,22 +30,30 @@
 // Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
 //---------------------------------------------------------------------------
 
+using System.Text.Json.Serialization;
+
 namespace Gurux.Updater.Model;
 
 /// <summary>Immutable images and publisher-audited database rollback policy for one AMI release.</summary>
 public sealed class GXComposeRelease
 {
     /// <summary>Publisher release channel.</summary>
+    [JsonPropertyName("channel")]
     public string Channel { get; set; } = "stable";
     /// <summary>Supported Docker platform identifiers.</summary>
+    [JsonPropertyName("platforms")]
     public List<string> Platforms { get; set; } = [];
     /// <summary>Logical service roles mapped to immutable registry digest references.</summary>
+    [JsonPropertyName("images")]
     public Dictionary<string, string> Images { get; set; } = [];
     /// <summary>Whether the public WASM publication must also be checked.</summary>
+    [JsonPropertyName("containsWasm")]
     public bool ContainsWasm { get; set; } = true;
     /// <summary>Audited installed-version range whose images can read the database after this release starts.</summary>
+    [JsonPropertyName("rollbackCompatibleFrom")]
     public string? RollbackCompatibleFrom { get; set; }
     /// <summary>Requires a separate database-aware maintenance procedure.</summary>
+    [JsonPropertyName("maintenanceRequired")]
     public bool MaintenanceRequired { get; set; } = true;
 }
 

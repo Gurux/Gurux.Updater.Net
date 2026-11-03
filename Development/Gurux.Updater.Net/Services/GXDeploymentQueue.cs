@@ -68,10 +68,10 @@ public sealed class GXDeploymentQueue(string root)
     { status.UpdatedAt = DateTimeOffset.UtcNow; return PersistStatusAsync(status, token); }
     async Task PersistStatusAsync(GXDeploymentStatus status, CancellationToken token)
     {
+        if (status.RequestId is not null && !Regex.IsMatch(status.RequestId, @"\A[A-Za-z0-9_-]{1,80}\z")) throw new InvalidDataException("Invalid transaction ID.");
         await WriteAtomicAsync("status.json", status, token);
         if (status.RequestId is not null)
         {
-            if (!Regex.IsMatch(status.RequestId, @"\A[A-Za-z0-9_-]{1,80}\z")) throw new InvalidDataException("Invalid transaction ID.");
             Directory.CreateDirectory(Path.Combine(Root, "history"));
             await WriteAtomicAsync("history/" + status.RequestId + ".json", status, token);
         }

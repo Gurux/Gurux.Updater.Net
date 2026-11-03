@@ -206,7 +206,10 @@ public sealed class GXComposeDeploymentService(HttpClient client, IGXComposeRunn
                 foreach (var role in release.Compose.Images.Where(p => p.Value == image))
                     transaction.NewImageIds[options.Compose.Services[role.Key]] = imageId;
                 string platform = item.GetProperty("Os").GetString() + "/" + item.GetProperty("Architecture").GetString();
+                var selectedPlatform = options.Compose.Platform.Split('/');
+                bool wrongVariant = selectedPlatform.Length == 3 && (!item.TryGetProperty("Variant", out var variant) || variant.GetString() != selectedPlatform[2]);
                 if (options.Compose.Platform != platform && !options.Compose.Platform.StartsWith(platform + "/", StringComparison.Ordinal) ||
+                    wrongVariant ||
                     item.GetProperty("Config").GetProperty("Labels").GetProperty("org.opencontainers.image.version").GetString() != release.Version)
                     throw new InvalidDataException("Pulled image platform/version differs from the catalog.");
             }
