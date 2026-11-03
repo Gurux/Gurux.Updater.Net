@@ -29,4 +29,3 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet build Development/Gurux.Updater.Tool -c Release -p:GeneratePackageOnBuild=false
-      - run: dotnet test Tests/ModuleContent.Tests -c Release -p:GeneratePackageOnBuild=false

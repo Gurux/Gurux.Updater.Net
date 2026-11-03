@@ -261,6 +261,7 @@ public sealed class GXComposeDeploymentService(HttpClient client, IGXComposeRunn
         if (successful?.Compose is not { } previous || request.Version != previous.PreviousVersion)
             throw new InvalidDataException("Only the retained previous successful installation can be restored.");
         await ValidateSnapshotAsync(options, previous);
+        await ValidateSavedImagesAsync(previous, token);
         await VerifyAsync(options, previous, current, token);
         // Journal the current candidate as the recovery target before changing any container.
         var recovery = new GXComposeTransaction
@@ -270,6 +271,7 @@ public sealed class GXComposeDeploymentService(HttpClient client, IGXComposeRunn
             PreviousImages = new(previous.NewImages), PreviousImageIds = new(previous.NewImageIds)
         };
         await ValidateSnapshotAsync(options, recovery);
+        await ValidateSavedImagesAsync(recovery, token);
         var status = new GXDeploymentStatus { RequestId = request.RequestId, Version = request.Version, RestorePrevious = true, Compose = recovery, State = "Activating" };
         var queue = new GXDeploymentQueue(options.Root);
         await queue.WriteStatusAsync(status, token);
@@ -381,9 +383,21 @@ public sealed class GXComposeDeploymentService(HttpClient client, IGXComposeRunn
             !transaction.PreviousImageIds.Keys.Order().SequenceEqual(options.Compose.Services.Values.Order()))
             throw new InvalidDataException("Compose recovery snapshot is unavailable or has changed.");
     }
+    async Task ValidateSavedImagesAsync(GXComposeTransaction transaction, CancellationToken token)
+    {
+        foreach (var image in transaction.PreviousImages)
+        {
+            using var inspect = JsonDocument.Parse(await runner.RunAsync(["image", "inspect", image.Value], token));
+            if (!transaction.PreviousImageIds.TryGetValue(image.Key, out var expected) ||
+                !Regex.IsMatch(expected, @"\Asha256:[a-f0-9]{64}\z") ||
+                inspect.RootElement.GetArrayLength() != 1 || inspect.RootElement[0].GetProperty("Id").GetString() != expected)
+                throw new InvalidDataException("Saved Compose image is missing or differs from its recorded immutable ID.");
+        }
+    }
     async Task RestoreAsync(GXDeploymentOptions options, GXComposeTransaction transaction)
     {
         await ValidateSnapshotAsync(options, transaction);
+        await ValidateSavedImagesAsync(transaction, CancellationToken.None);
         await WriteOverrideAsync(options, transaction.PreviousImages, CancellationToken.None);
         await UpAsync(options, transaction.SnapshotFile, CancellationToken.None);
         await VerifyAsync(options, transaction, transaction.PreviousVersion, CancellationToken.None, restoring: true);
