@@ -1,3 +1,35 @@
+//
+// --------------------------------------------------------------------------
+//  Gurux Ltd
+// 
+//
+//
+// Filename:        $HeadURL$
+//
+// Version:         $Revision$,
+//                  $Date$
+//                  $Author$
+//
+// Copyright (c) Gurux Ltd
+//
+//---------------------------------------------------------------------------
+//
+//  DESCRIPTION
+//
+// This file is a part of Gurux Device Framework.
+//
+// Gurux Device Framework is Open Source software; you can redistribute it
+// and/or modify it under the terms of the GNU General Public License 
+// as published by the Free Software Foundation; version 2 of the License.
+// Gurux Device Framework is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of 
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+// See the GNU General Public License for more details.
+//
+// This code is licensed under the GNU General Public License v2. 
+// Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
+//---------------------------------------------------------------------------
+
 using System.Text.Json;
 using Gurux.Updater.Model;
 using NuGet.Versioning;
@@ -11,7 +43,8 @@ public sealed class GXModuleContentService(HttpClient client)
 
     static void Kind(string kind)
     {
-        if (kind is not ("localization" or "resources")) throw new ArgumentException("Module content kind must be localization or resources.");
+        if (kind is not ("localization" or "resources"))
+            throw new ArgumentException("Module content kind must be localization or resources.");
     }
 
     /// <summary>Lists compatible stable module releases from the corresponding localization/resource index.</summary>
@@ -25,8 +58,10 @@ public sealed class GXModuleContentService(HttpClient client)
         if (kind == "resources")
         {
             var catalog = GXLocalizationJson.Read<GXResourceCatalog>(await reader.ReadAsync(index, token), index);
-            if (catalog.SchemaVersion != 1 || catalog.Items == null) throw new InvalidDataException("Invalid resource index.");
-            foreach (var manifest in catalog.Items) GXContentReleaseService.ValidateManifest(manifest);
+            if (catalog.SchemaVersion != 1 || catalog.Items == null)
+                throw new InvalidDataException("Invalid resource index.");
+            foreach (var manifest in catalog.Items)
+                GXContentReleaseService.ValidateManifest(manifest);
             manifests = catalog.Items.Where(x => x.ModulePackage);
         }
         else
@@ -34,16 +69,24 @@ public sealed class GXModuleContentService(HttpClient client)
             var catalog = await new GXLocalizationService(client, allowLoopbackHttp: true).GetCatalogAsync(index, token);
             manifests = catalog.Items.SelectMany(item => item.Releases.Where(x => x.ModulePackage).Select(release => new GXContentManifest
             {
-                ModulePackage = true, Kind = "localization", Owner = item.Owner, OwnerType = item.OwnerType,
-                Unit = "all", Version = release.Version, OwnerVersionRange = release.OwnerVersionRange,
-                Sha256 = release.Sha256, Size = release.Size, ContentSha256 = release.ContentSha256 ?? ""
+                ModulePackage = true,
+                Kind = "localization",
+                Owner = item.Owner,
+                OwnerType = item.OwnerType,
+                Unit = "all",
+                Version = release.Version,
+                OwnerVersionRange = release.OwnerVersionRange,
+                Sha256 = release.Sha256,
+                Size = release.Size,
+                ContentSha256 = release.ContentSha256 ?? ""
             }));
         }
         var all = manifests.ToList();
         foreach (var manifest in all)
         {
             GXContentReleaseService.ValidateManifest(manifest);
-            if (manifest.Kind != kind) throw new InvalidDataException("Index contains the wrong content kind.");
+            if (manifest.Kind != kind)
+                throw new InvalidDataException("Index contains the wrong content kind.");
         }
         if (all.GroupBy(x => x.Tag, StringComparer.OrdinalIgnoreCase).Any(x => x.Count() > 1))
             throw new InvalidDataException("Duplicate module content release.");
@@ -62,7 +105,8 @@ public sealed class GXModuleContentService(HttpClient client)
     static GXContentManifest? Installed(string root, string owner, string kind)
     {
         string state = StatePath(root, kind);
-        if (!File.Exists(state)) return null;
+        if (!File.Exists(state))
+            return null;
         var manifest = GXContentReleaseService.ReadManifest(File.ReadAllBytes(state));
         if (!manifest.ModulePackage || manifest.Owner != owner || manifest.Kind != kind)
             throw new InvalidDataException("Installed resource identity differs from requested module/type.");
@@ -74,7 +118,8 @@ public sealed class GXModuleContentService(HttpClient client)
         CancellationToken token = default)
     {
         var latest = (await ListAsync(index, owner, kind, ownerVersion, token)).FirstOrDefault();
-        if (latest == null) return false;
+        if (latest == null)
+            return false;
         var previous = Installed(ManagedRoot(install), owner, kind);
         return previous == null || VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(latest.Version), GXLocalizationJson.Version(previous.Version)) > 0;
     }
@@ -125,23 +170,29 @@ public sealed class GXModuleContentService(HttpClient client)
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     await File.WriteAllBytesAsync(path, asset.Value, token);
                 }
-            else await File.WriteAllBytesAsync(GXLocalizationService.ManagedPath(staging, owner + ".json"), bytes, token);
+            else
+                await File.WriteAllBytesAsync(GXLocalizationService.ManagedPath(staging, owner + ".json"), bytes, token);
             await File.WriteAllBytesAsync(GXLocalizationService.ManagedPath(staging, ".gurux-release.json"),
                 JsonSerializer.SerializeToUtf8Bytes(latest, GXLocalizationJson.Options), token);
             token.ThrowIfCancellationRequested();
             _ = ContentDirectory(root, kind);
-            if (Directory.Exists(target)) { Directory.Move(target, backup); movedOld = true; }
-            try { Directory.Move(staging, target); installed = true; }
+            if (Directory.Exists(target))
+            { Directory.Move(target, backup); movedOld = true; }
+            try
+            { Directory.Move(staging, target); installed = true; }
             catch
             {
-                if (movedOld) Directory.Move(backup, target);
+                if (movedOld)
+                    Directory.Move(backup, target);
                 throw;
             }
         }
         finally
         {
-            if (Directory.Exists(staging)) Directory.Delete(staging, true);
-            if (installed && Directory.Exists(backup)) Directory.Delete(backup, true);
+            if (Directory.Exists(staging))
+                Directory.Delete(staging, true);
+            if (installed && Directory.Exists(backup))
+                Directory.Delete(backup, true);
         }
         return true;
     }

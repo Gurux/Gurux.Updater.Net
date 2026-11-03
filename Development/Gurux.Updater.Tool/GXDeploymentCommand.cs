@@ -1,0 +1,122 @@
+//
+// --------------------------------------------------------------------------
+//  Gurux Ltd
+// 
+//
+//
+// Filename:        $HeadURL$
+//
+// Version:         $Revision$,
+//                  $Date$
+//                  $Author$
+//
+// Copyright (c) Gurux Ltd
+//
+//---------------------------------------------------------------------------
+//
+//  DESCRIPTION
+//
+// This file is a part of Gurux Device Framework.
+//
+// Gurux Device Framework is Open Source software; you can redistribute it
+// and/or modify it under the terms of the GNU General Public License 
+// as published by the Free Software Foundation; version 2 of the License.
+// Gurux Device Framework is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of 
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+// See the GNU General Public License for more details.
+//
+// This code is licensed under the GNU General Public License v2. 
+// Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
+//---------------------------------------------------------------------------
+
+using System.Net.Http.Headers;
+using System.Text.Json;
+using Gurux.Updater.Model;
+using Gurux.Updater.Services;
+
+namespace Gurux.Updater.Tool;
+
+/// <summary>Independent deployment agent. Run in its own systemd unit, never inside the AMI backend unit.</summary>
+internal static class GXDeploymentCommand
+{
+    internal static async Task RunAsync(string[] args, CancellationToken token)
+    {
+        if (args.Length != 2 || args[0] != "--config")
+            throw new ArgumentException("Usage: Gurux.Updater.Tool deployment-agent --config /etc/gurux-ami/updater.json");
+        if (!OperatingSystem.IsLinux())
+            throw new PlatformNotSupportedException("Deployment agent requires Linux.");
+        var options = JsonSerializer.Deserialize<GXDeploymentOptions>(await File.ReadAllTextAsync(args[1], token), new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            ?? throw new InvalidDataException("Empty deployment configuration.");
+        GXDeploymentService.ValidateOptions(options);
+        Directory.CreateDirectory(options.Root);
+        Directory.CreateDirectory(Path.Combine(options.Root, "queue"));
+        using var daemonLock = new FileStream(Path.Combine(options.Root, "agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        // No default credentials: authentication applies only to explicitly validated GitHub download requests.
+        using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
+        var service = new GXDeploymentService(client);
+        var queue = new GXDeploymentQueue(options.Root);
+        await service.RecoverAsync(options);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var heartbeat = HeartbeatAsync(options.Root, lifetime.Token);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                GXDeploymentRequest? request = await queue.ReadRequestAsync(token);
+                if (request is not null)
+                {
+                    bool installationStarted = false;
+                    try
+                    {
+                        if (!options.IncludeBackend && options.ApiVersionUrl is not null)
+                            options.ApiVersion = (await client.GetStringAsync(options.ApiVersionUrl, token)).Trim().Trim('"');
+                        var catalog = await new GXCatalogUpdateService(client).GetCatalogAsync(new Uri(options.CatalogUrl), token);
+                        var release = GXDeploymentService.SelectRelease(catalog, options, request.Version);
+                        installationStarted = true;
+                        await service.InstallAsync(options, release, token, request.RequestId);
+                        queue.CompleteRequest();
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException || !token.IsCancellationRequested)
+                    {
+                        // Never log configuration or private request headers.
+                        Console.Error.WriteLine($"Deployment {request.Version} failed: {exception.Message}");
+                        await HandleFailureAsync(queue, request, installationStarted, exception);
+                    }
+                }
+                await Task.Delay(1000, token);
+            }
+        }
+        finally
+        {
+            lifetime.Cancel();
+            try
+            { await heartbeat; }
+            catch (OperationCanceledException) { }
+            File.Delete(Path.Combine(options.Root, "agent-heartbeat"));
+        }
+    }
+    internal static async Task HandleFailureAsync(GXDeploymentQueue queue, GXDeploymentRequest request, bool installationStarted, Exception exception)
+    {
+        if (installationStarted)
+        {
+            var status = await queue.ReadStatusAsync();
+            // An installation that did not durably reach a safe terminal state must be recovered,
+            // not overwritten by a generic failure that discards the previous-link journal.
+            if (status?.RequestId != request.RequestId || status?.Version != request.Version || status.State is not ("Failed" or "RolledBack" or "Succeeded"))
+                throw new InvalidOperationException("Deployment outcome is uncertain; retaining journal and request for recovery.", exception);
+        }
+        else
+            await queue.WriteStatusAsync(new() { RequestId = request.RequestId, Version = request.Version, State = "Failed", Error = exception.Message });
+        queue.CompleteRequest();
+    }
+    static async Task HeartbeatAsync(string root, CancellationToken token)
+    {
+        while (true)
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "agent-heartbeat"), DateTimeOffset.UtcNow.ToString("O"), token);
+            await Task.Delay(5000, token);
+        }
+    }
+}

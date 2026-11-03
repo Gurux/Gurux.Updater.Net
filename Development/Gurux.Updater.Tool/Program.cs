@@ -56,6 +56,18 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "deployment-agent")
+            {
+                using var cancellation = new CancellationTokenSource();
+                ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+                Console.CancelKeyPress += cancel;
+                using var sigterm = OperatingSystem.IsLinux() ? System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                    System.Runtime.InteropServices.PosixSignal.SIGTERM, context => { context.Cancel = true; cancellation.Cancel(); }) : null;
+                try
+                { await GXDeploymentCommand.RunAsync(args[1..], cancellation.Token); return 0; }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return 130; }
+                finally { Console.CancelKeyPress -= cancel; }
+            }
             if (args.Length > 0 && args[0] == "register-module")
             {
                 await GXRegisterModuleCommand.RunAsync(args[1..], Console.Out);
@@ -262,11 +274,18 @@ internal static class Program
         }
         GXUpdateTarget target = CreateTarget(options);
         GXUpdateInfo info;
-        try { info = await service.CheckAsync(target, CancellationToken.None); }
+        try
+        { info = await service.CheckAsync(target, CancellationToken.None); }
         catch (Exception ex)
         {
-            info = new GXUpdateInfo { Name = target.Name ?? string.Empty, Application = target.Application ?? string.Empty,
-                Repository = target.Repository ?? string.Empty, Status = GXUpdateStatus.CheckFailed, Error = ex.Message };
+            info = new GXUpdateInfo
+            {
+                Name = target.Name ?? string.Empty,
+                Application = target.Application ?? string.Empty,
+                Repository = target.Repository ?? string.Empty,
+                Status = GXUpdateStatus.CheckFailed,
+                Error = ex.Message
+            };
         }
         if (options.Json)
         {
@@ -277,7 +296,8 @@ internal static class Program
             Console.WriteLine(GXUpdateText.Status(info));
             Console.WriteLine($"Priority:         {info.Priority}");
             Console.WriteLine($"Security update:  {info.IsSecurityUpdate}");
-            if (info.Error is not null) Console.Error.WriteLine(info.Error);
+            if (info.Error is not null)
+                Console.Error.WriteLine(info.Error);
             Console.WriteLine($"Application:      {info.Application}");
             Console.WriteLine($"Current version:  {info.CurrentVersion}");
             Console.WriteLine($"Latest version:   {info.LatestVersion}");

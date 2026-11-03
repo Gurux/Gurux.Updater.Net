@@ -63,5 +63,6 @@ nunit-*.xml
 Development/catalog-update-example.json
 /Tests/*
 !/Tests/ModuleContent.Tests/
+!/Tests/Deployment.Tests/
 __pycache__/
 *.py[cod]

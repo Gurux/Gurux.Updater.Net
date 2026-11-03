@@ -570,6 +570,7 @@ public sealed class GXUpdaterOptions
 Gurux.Updater (.NET 10)
 
 Usage:
+  Gurux.Updater deployment-agent --config <server-owned-json-file>
   Gurux.Updater [check] --maintenance-status <status> [--category <slug>] [--audience <slug>] [catalog options]
   Gurux.Updater check --product <id> --current-version <version> [--ami-version <version>] [catalog options]
   Gurux.Updater localization <list|add|update|download|validate> [options]
