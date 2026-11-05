@@ -1,34 +1,29 @@
-//
 // --------------------------------------------------------------------------
-//  Gurux Ltd
-// 
+// Gurux Ltd
 //
+// Copyright (c) Gurux Ltd.
 //
-// Filename:        $HeadURL$
+// This file is part of Gurux Device Framework.
 //
-// Version:         $Revision$,
-//                  $Date$
-//                  $Author$
+// Commit: $Format:%H$
+// Date:   $Format:%cI$
 //
-// Copyright (c) Gurux Ltd
+// This software is available under either of the following licenses:
 //
-//---------------------------------------------------------------------------
+// 1. GNU General Public License, version 2 only (GPL-2.0-only).
+//    See the LICENSE file included with this distribution.
 //
-//  DESCRIPTION
+// 2. A commercial license granted by Gurux Ltd under a separate written
+//    agreement. Use under this option requires a valid commercial license
+//    and is governed by the terms of that agreement.
 //
-// This file is a part of Gurux Device Framework.
+// If you have not obtained a commercial license from Gurux Ltd,
+// use of this software is governed by GPL-2.0-only.
 //
-// Gurux Device Framework is Open Source software; you can redistribute it
-// and/or modify it under the terms of the GNU General Public License 
-// as published by the Free Software Foundation; version 2 of the License.
-// Gurux Device Framework is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of 
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
-// See the GNU General Public License for more details.
+// Commercial licensing: https://www.gurux.fi/
 //
-// This code is licensed under the GNU General Public License v2. 
-// Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
-//---------------------------------------------------------------------------
+// SPDX-License-Identifier: GPL-2.0-only OR LicenseRef-Gurux-Commercial
+// --------------------------------------------------------------------------
 
 using Gurux.Updater.Enums;
 using Gurux.Updater.Model;
@@ -367,6 +362,7 @@ internal static class Program
         GXHealthChecker healthChecker = new(healthClient);
         string? backupDirectory = null;
         bool serviceStopped = false;
+        Process? applicationProcess = null;
         try
         {
             string package = local ? Path.GetFullPath(options.LocalPackage!) : Path.Combine(tempRoot, info!.Asset!.Name);
@@ -431,12 +427,7 @@ internal static class Program
                     }
                     else if (File.Exists(applicationPath))
                     {
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = applicationPath,
-                            WorkingDirectory = targetDirectory,
-                            UseShellExecute = true
-                        });
+                        applicationProcess = StartApplication(applicationPath, targetDirectory);
                     }
                     await healthChecker.WaitAsync(options.HealthUrl, options.VersionUrl, info?.LatestVersion ?? string.Empty, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
                 }
@@ -445,6 +436,19 @@ internal static class Program
             catch
             {
                 Console.Error.WriteLine("Update failed. Restoring the previous version...");
+                if (applicationProcess != null)
+                {
+                    try
+                    {
+                        if (!applicationProcess.HasExited)
+                        {
+                            applicationProcess.Kill(entireProcessTree: true);
+                            await applicationProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                        }
+                    }
+                    catch (InvalidOperationException) when (applicationProcess.HasExited) { }
+                    finally { applicationProcess.Dispose(); applicationProcess = null; }
+                }
                 if (!string.IsNullOrWhiteSpace(options.Service) && !serviceStopped)
                 {
                     try
@@ -471,11 +475,18 @@ internal static class Program
                     serviceStopped = false;
                     await healthChecker.WaitAsync(options.HealthUrl, null, info?.CurrentVersion ?? string.Empty, TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
                 }
+                else if (!options.NoRestart && targetExisted && File.Exists(applicationPath))
+                {
+                    applicationProcess = StartApplication(applicationPath, targetDirectory);
+                    await healthChecker.WaitAsync(options.HealthUrl, null, info?.CurrentVersion ?? string.Empty,
+                        TimeSpan.FromSeconds(options.StartupTimeout), CancellationToken.None);
+                }
                 throw;
             }
         }
         finally
         {
+            applicationProcess?.Dispose();
             if (serviceStopped && !options.NoRestart && !string.IsNullOrWhiteSpace(options.Service))
             {
                 try
@@ -496,6 +507,16 @@ internal static class Program
         }
         return 0;
     }
+
+    private static Process StartApplication(string applicationPath, string workingDirectory) =>
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = applicationPath,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden
+        }) ?? throw new IOException("The application process could not be started.");
 
     /// <summary>
     /// Throws if the file SHA-256 hash differs from the expected hexadecimal value.

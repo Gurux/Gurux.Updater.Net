@@ -164,6 +164,15 @@ jobs:
           if (-not (Test-Path $package)) { throw "Package missing: $package" }
         }
       if: steps.select.outputs.has_changes == 'True'
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+      if: steps.select.outputs.has_changes == 'True'
+    - name: Verify publication scripts
+      run: |
+        python -m unittest discover -s Development/tests-content-release -v
+        if ($LASTEXITCODE -ne 0) { throw 'Publication script tests failed.' }
+      if: steps.select.outputs.has_changes == 'True'
     - name: NuGet login (Trusted Publishing)
       uses: NuGet/login@v1
       id: login
@@ -184,14 +193,17 @@ jobs:
           "Published $id $env:BUILD_BUILDNUMBER" >> $env:GITHUB_STEP_SUMMARY
         }
       if: steps.select.outputs.has_changes == 'True'
-    - name: Create version tags
+    - name: Create version tag
       run: |
         $ErrorActionPreference = 'Stop'
         foreach ($id in $env:SELECTED_PACKAGES.Split(',')) {
           $tag = "$id/v$env:BUILD_BUILDNUMBER"
-          $existing = @(git tag --list $tag)
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read tags.' }
-          if ($existing.Count -gt 0) {
+          $existing = @(git ls-remote --exit-code --tags origin "refs/tags/$tag")
+          $status = $LASTEXITCODE
+          if ($status -notin @(0, 2)) { throw 'Could not read remote tags.' }
+          if ($status -eq 0) {
+            git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+            if ($LASTEXITCODE -ne 0) { throw "Tag fetch failed: $tag" }
             $target = git rev-list -n 1 $tag
             if ($LASTEXITCODE -ne 0 -or $target -ne $env:GITHUB_SHA) { throw "Tag points to a different commit: $tag" }
           } else {
@@ -200,5 +212,40 @@ jobs:
           }
           git push origin "refs/tags/$tag"
           if ($LASTEXITCODE -ne 0) { throw "Tag push failed: $tag" }
+        }
+      if: steps.select.outputs.has_changes == 'True'
+    - name: Create source archives and GitHub Releases
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        foreach ($id in $env:SELECTED_PACKAGES.Split(',')) {
+          $tag = "$id/v$env:BUILD_BUILDNUMBER"
+          $asset = "$id.$env:BUILD_BUILDNUMBER-source.zip"
+          $archive = Join-Path $env:RUNNER_TEMP $asset
+          git archive --format=zip "--output=$archive" $tag
+          if ($LASTEXITCODE -ne 0) { throw "Source archive failed: $tag" }
+          # Query the release list so authentication/network errors cannot look like absence.
+          $releases = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not list releases.' }
+          if ($tag -notin @($releases)) {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --verify-tag --title $tag --notes "Source for $id $env:BUILD_BUILDNUMBER. Archive Commit and Date fields identify the release commit."
+            if ($LASTEXITCODE -ne 0) { throw "Release creation failed: $tag" }
+          }
+          $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release assets: $tag" }
+          if ($asset -in @($assets)) {
+            # Reuse an identical asset; a differing asset requires explicit intervention.
+            $download = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+            New-Item -ItemType Directory $download | Out-Null
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $download
+            if ($LASTEXITCODE -ne 0) { throw "Asset download failed: $asset" }
+            if ((Get-FileHash $archive).Hash -ne (Get-FileHash (Join-Path $download $asset)).Hash) {
+              throw "Existing source asset differs: $asset"
+            }
+          } else {
+            gh release upload $tag $archive --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Asset upload failed: $asset" }
+          }
         }
       if: steps.select.outputs.has_changes == 'True'

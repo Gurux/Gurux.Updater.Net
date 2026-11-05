@@ -1,34 +1,29 @@
-//
 // --------------------------------------------------------------------------
-//  Gurux Ltd
-// 
+// Gurux Ltd
 //
+// Copyright (c) Gurux Ltd.
 //
-// Filename:        $HeadURL$
+// This file is part of Gurux Device Framework.
 //
-// Version:         $Revision$,
-//                  $Date$
-//                  $Author$
+// Commit: $Format:%H$
+// Date:   $Format:%cI$
 //
-// Copyright (c) Gurux Ltd
+// This software is available under either of the following licenses:
 //
-//---------------------------------------------------------------------------
+// 1. GNU General Public License, version 2 only (GPL-2.0-only).
+//    See the LICENSE file included with this distribution.
 //
-//  DESCRIPTION
+// 2. A commercial license granted by Gurux Ltd under a separate written
+//    agreement. Use under this option requires a valid commercial license
+//    and is governed by the terms of that agreement.
 //
-// This file is a part of Gurux Device Framework.
+// If you have not obtained a commercial license from Gurux Ltd,
+// use of this software is governed by GPL-2.0-only.
 //
-// Gurux Device Framework is Open Source software; you can redistribute it
-// and/or modify it under the terms of the GNU General Public License 
-// as published by the Free Software Foundation; version 2 of the License.
-// Gurux Device Framework is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of 
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
-// See the GNU General Public License for more details.
+// Commercial licensing: https://www.gurux.fi/
 //
-// This code is licensed under the GNU General Public License v2. 
-// Full text may be retrieved at http://www.gnu.org/licenses/gpl-2.0.txt
-//---------------------------------------------------------------------------
+// SPDX-License-Identifier: GPL-2.0-only OR LicenseRef-Gurux-Commercial
+// --------------------------------------------------------------------------
 
 using System.IO.Compression;
 using System.Net.Http.Headers;
@@ -206,7 +201,8 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
                 Directory.Delete(stage, true);
         }
     }
-    static string WebRoot(string release, GXDeploymentOptions options) => options.IncludeBackend ? Path.Combine(release, "wwwroot") : release;
+    static string WebRoot(string release, GXDeploymentOptions options) => options.IncludeBackend
+        ? Path.Combine(release, Directory.Exists(Path.Combine(release, "standalone")) ? "standalone" : "wwwroot") : release;
     static string[] BootstrapFiles(string web)
     {
         // .NET 10 embeds the boot manifest in dotnet.js instead of blazor.boot.json.
@@ -421,6 +417,13 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
         Switch(options, status.PreviousTarget);
         if (options.IncludeBackend && status.PreviousTarget is not null)
             await manager.StartAsync(options.ServiceName);
+        if (status.PreviousTarget is null)
+            throw new InvalidDataException("No previous installation is available for public rollback verification.");
+        string restored = Path.GetFullPath(Path.Combine(options.Root, status.PreviousTarget));
+        using var marker = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(WebRoot(restored, options), "version.json")));
+        string version = marker.RootElement.GetProperty("version").GetString() ?? throw new InvalidDataException("Restored installation has no version.");
+        GXDeploymentQueue.ValidateVersion(version);
+        await CheckAsync(options, restored, version, CancellationToken.None);
     }
     /// <summary>Recovers the persisted transaction after updater or host interruption.</summary>
     public async Task RecoverAsync(GXDeploymentOptions options)
@@ -432,7 +435,14 @@ public sealed class GXDeploymentService(HttpClient client, IGXServiceManager? se
         var status = await queue.ReadStatusAsync();
         if (status?.State is "Activating" or "Verifying" or "RollingBack" or "RollbackFailed")
         {
-            await RestoreAsync(options, status);
+            try { await RestoreAsync(options, status); }
+            catch (Exception error)
+            {
+                status.State = "RollbackFailed";
+                status.Error = "Interrupted deployment restoration failed: " + error.Message;
+                await queue.WriteStatusAsync(status);
+                throw;
+            }
             status.State = "RolledBack";
             status.Error = "Interrupted deployment recovered to previous release.";
             await queue.WriteStatusAsync(status);

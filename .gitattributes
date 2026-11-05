@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Expand release commit metadata in source archives.
+*.cs export-subst
+*.py export-subst
+*.sh export-subst

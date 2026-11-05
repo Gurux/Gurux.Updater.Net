@@ -711,3 +711,26 @@ dotnet test Tests/ModuleContent.Tests -c Release -p:GeneratePackageOnBuild=false
 ```
 
 Deploy/merge these validator changes before the Modules and Catalog workflows that consume the shared Tool. No NuGet publication is needed for repository-checkout workflows.
+
+## Static AMI and backend deployment
+
+Docker Compose installations use the same host agent, catalog and status history with a separate installation method. See [Compose updates from /update](Development/deployment/COMPOSE.md) for signed queue setup, immutable images, database compatibility and recovery.
+
+`deployment-agent --config /etc/gurux-ami/updater.json` runs an independent Linux updater for static Blazor WASM or a full published AMI backend/client release. It resolves queued versions from a trusted catalog, verifies SHA-256, stages safe ZIP contents, atomically switches `current`, manages the backend service when configured, verifies the public web-server URL and restores the previous release on failure. Status and transaction recovery are persisted outside releases. Existing installation commands and package types are unchanged.
+
+See [deployment setup and systemd/nginx examples](Development/deployment/README.md). The initial deployment-enabled backend and the separate updater service must be installed before updates can be initiated from AMI's `/updates` page.
+
+## License
+
+This software is available under either of the following licenses:
+
+- **Open-source license:** GNU General Public License, version 2 only
+  (GPL-2.0-only). See [LICENSE](LICENSE) for the full license text.
+- **Commercial license:** Available from Gurux Ltd under a separate
+  written agreement. This option allows use under the terms of that
+  agreement instead of GPL-2.0-only.
+
+A valid commercial license is required to use the commercial licensing
+option. See [Gurux Commercial License Notice](LICENSES/LicenseRef-Gurux-Commercial.txt).
+
+For commercial licensing inquiries, [contact Gurux Ltd](https://www.gurux.fi/).
