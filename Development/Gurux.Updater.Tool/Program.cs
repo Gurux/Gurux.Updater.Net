@@ -163,7 +163,9 @@ internal static class Program
                 using var catalogClient = new HttpClient();
                 catalogClient.DefaultRequestHeaders.UserAgent.ParseAdd("Gurux.Updater/1.0");
                 if (options.CurrentVersion != null)
+                {
                     return await GXCatalogCommand.CheckAsync(catalogClient, options, Console.Out);
+                }
                 await GXCatalogCommand.RunAsync(catalogClient, options, Console.Out);
                 return 0;
             }
@@ -292,7 +294,9 @@ internal static class Program
             Console.WriteLine($"Priority:         {info.Priority}");
             Console.WriteLine($"Security update:  {info.IsSecurityUpdate}");
             if (info.Error is not null)
+            {
                 Console.Error.WriteLine(info.Error);
+            }
             Console.WriteLine($"Application:      {info.Application}");
             Console.WriteLine($"Current version:  {info.CurrentVersion}");
             Console.WriteLine($"Latest version:   {info.LatestVersion}");
@@ -508,15 +512,26 @@ internal static class Program
         return 0;
     }
 
-    private static Process StartApplication(string applicationPath, string workingDirectory) =>
-        Process.Start(new ProcessStartInfo
+    private static Process StartApplication(string applicationPath, string workingDirectory)
+    {
+        bool managed = Path.GetExtension(applicationPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
+        string? currentHost = Environment.ProcessPath;
+        string dotnetHost = string.Equals(Path.GetFileNameWithoutExtension(currentHost), "dotnet", StringComparison.OrdinalIgnoreCase)
+            ? currentHost! : Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+        var start = new ProcessStartInfo
         {
-            FileName = applicationPath,
+            FileName = managed ? dotnetHost : applicationPath,
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
-        }) ?? throw new IOException("The application process could not be started.");
+        };
+        if (managed)
+        {
+            start.ArgumentList.Add(applicationPath);
+        }
+        return Process.Start(start) ?? throw new IOException("The application process could not be started.");
+    }
 
     /// <summary>
     /// Throws if the file SHA-256 hash differs from the expected hexadecimal value.

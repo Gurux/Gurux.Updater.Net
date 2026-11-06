@@ -110,11 +110,16 @@ internal static class GXLocalizationJson
     internal static string Culture(string culture)
     {
         if (string.IsNullOrWhiteSpace(culture) || !Regex.IsMatch(culture, @"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"))
+        {
             throw new InvalidDataException($"Invalid culture '{culture}'.");
+        }
         try
         {
             var info = CultureInfo.GetCultureInfo(culture);
-            if (!KnownCultures.Contains(info.Name)) throw new CultureNotFoundException();
+            if (!KnownCultures.Contains(info.Name))
+            {
+                throw new CultureNotFoundException();
+            }
             return info.Name;
         }
         catch (CultureNotFoundException ex) { throw new InvalidDataException($"Invalid culture '{culture}'.", ex); }
@@ -154,7 +159,9 @@ internal static class GXLocalizationJson
         ValidateMetadata(package, package.Resources?.Keys, package.SchemaVersion == 2);
         if (package.SchemaVersion == 2 && (package.Culture == null || package.Resources!.Count != 1 ||
             !package.Resources.ContainsKey(package.Culture) || Culture(package.Culture) != package.Culture) || package.SchemaVersion == 1 && package.Culture != null)
+        {
             throw new InvalidDataException("Schema 2 requires exactly one canonical culture; schema 1 cannot declare culture.");
+        }
         foreach (var culture in package.Resources!)
         {
             if (culture.Value == null)
@@ -200,7 +207,9 @@ internal static class GXLocalizationJson
                 ValidateMetadata(release, release.Cultures, release.Culture != null);
                 if (release.Culture != null && (Culture(release.Culture) != release.Culture || release.Cultures.Count != 1 || release.Cultures[0] != release.Culture ||
                     release.ContentSha256 == null || !Regex.IsMatch(release.ContentSha256, @"\A[0-9a-fA-F]{64}\z")))
+                {
                     throw new InvalidDataException("Single-culture release requires canonical culture, cultures and contentSha256.");
+                }
                 if (!versions.Add((release.Culture ?? "") + "/" + Version(release.Version).ToNormalizedString().Split('+')[0]))
                 {
                     throw new InvalidDataException($"Duplicate localization version '{item.Owner}/{release.Version}'.");
@@ -231,6 +240,8 @@ internal static class GXLocalizationJson
             throw new InvalidDataException($"Package metadata does not match catalog release '{item.Owner}/{release.Version}'.");
         }
         if (release.ContentSha256 != null && GXLocalizationPublisher.ContentHash(package) != release.ContentSha256.ToLowerInvariant())
+        {
             throw new InvalidDataException("Package contentSha256 does not match the index.");
+        }
     }
 }

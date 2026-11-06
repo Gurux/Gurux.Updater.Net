@@ -66,3 +66,4 @@ Development/catalog-update-example.json
 !/Tests/Deployment.Tests/
 __pycache__/
 *.py[cod]
+AGENTS.md

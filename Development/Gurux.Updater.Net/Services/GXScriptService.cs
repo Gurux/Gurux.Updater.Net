@@ -58,15 +58,22 @@ public sealed class GXScriptService
             string.IsNullOrWhiteSpace(m.Description) || string.IsNullOrWhiteSpace(m.Author) || string.IsNullOrWhiteSpace(m.License) ||
             string.IsNullOrWhiteSpace(m.AmiVersionRange) || !VersionRange.TryParse(m.AmiVersionRange, out _) ||
             !Regex.IsMatch(m.Sha256 ?? "", @"\A[0-9a-fA-F]{64}\z") || m.Size is <= 0 or > 4 * 1024 * 1024)
+        {
             throw new InvalidDataException("Invalid script manifest: require identity, version, .cs/.csx basename, description, author, license, AMI range, SHA-256 and size (1 byte–4 MiB).");
+        }
     }
     private static T Read<T>(byte[] bytes) => JsonSerializer.Deserialize<T>(bytes, Json) ?? throw new InvalidDataException("Empty script JSON.");
     private static void Verify(GXScriptManifest m, byte[] bytes)
     {
         Validate(m);
         if (bytes.LongLength != m.Size || !Convert.ToHexString(SHA256.HashData(bytes)).Equals(m.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
             throw new InvalidDataException("Script size or SHA-256 mismatch.");
-        try { if (new UTF8Encoding(false, true).GetString(bytes).Contains('\0')) throw new InvalidDataException("Script contains NUL bytes."); }
+        }
+        try { if (new UTF8Encoding(false, true).GetString(bytes).Contains('\0'))
+        {
+            throw new InvalidDataException("Script contains NUL bytes.");
+        } }
         catch (DecoderFallbackException ex) { throw new InvalidDataException("Script must be UTF-8 text.", ex); }
     }
     /// <summary>Reads a standalone JSON manifest.</summary>
@@ -80,13 +87,18 @@ public sealed class GXScriptService
     public async Task<GXScriptCatalog> GetCatalogAsync(string source, CancellationToken token = default)
     {
         var catalog = Read<GXScriptCatalog>(await reader.ReadAsync(source, token));
-        if (catalog.SchemaVersion != 1 || catalog.Items == null) throw new InvalidDataException("Unsupported script index.");
+        if (catalog.SchemaVersion != 1 || catalog.Items == null)
+        {
+            throw new InvalidDataException("Unsupported script index.");
+        }
         HashSet<string> identities = new(StringComparer.OrdinalIgnoreCase);
         foreach (var item in catalog.Items)
         {
             Validate(item);
             if (string.IsNullOrWhiteSpace(item.Path) || !identities.Add(item.Id + "/" + NuGetVersion.Parse(item.Version).ToNormalizedString()))
+            {
                 throw new InvalidDataException("Missing source path or duplicate script release.");
+            }
             _ = reader.ResolveReference(source, item.Path);
         }
         return catalog;
@@ -101,22 +113,34 @@ public sealed class GXScriptService
     /// <summary>Publishes verified local source with its separate manifest.</summary>
     public async Task PublishAsync(Uri index, string manifestPath, string scriptPath, CancellationToken token = default)
     {
-        if (reader.GetRemoteUri(index.AbsoluteUri) == null) throw new ArgumentException("An HTTP(S) index is required.");
+        if (reader.GetRemoteUri(index.AbsoluteUri) == null)
+        {
+            throw new ArgumentException("An HTTP(S) index is required.");
+        }
         var manifest = await ReadManifestAsync(manifestPath, token);
-        if (!Path.GetFileName(scriptPath).Equals(manifest.FileName, StringComparison.Ordinal)) throw new InvalidDataException("Source basename differs from manifest fileName.");
+        if (!Path.GetFileName(scriptPath).Equals(manifest.FileName, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Source basename differs from manifest fileName.");
+        }
         var bytes = await File.ReadAllBytesAsync(scriptPath, token);
         Verify(manifest, bytes);
         using var body = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new { manifest, content = Convert.ToBase64String(bytes) }, Json));
         body.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var response = await client.PostAsync(index, body, token);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Script publication failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync(token)}");
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Script publication failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync(token)}");
+        }
     }
     /// <summary>Downloads a verified script and provenance. Existing files are never replaced by this operation.</summary>
     public async Task InstallAsync(string source, GXScriptManifest manifest, string destination, string amiVersion, CancellationToken token = default)
     {
         ValidateCompatibility(manifest, amiVersion);
         var path = Path.GetFullPath(destination);
-        if (File.Exists(path) || File.Exists(path + ".gurux.json")) throw new IOException("Script already exists; use update explicitly.");
+        if (File.Exists(path) || File.Exists(path + ".gurux.json"))
+        {
+            throw new IOException("Script already exists; use update explicitly.");
+        }
         var bytes = await reader.ReadAsync(reader.ResolveReference(source, manifest.Path), token);
         Verify(manifest, bytes);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -132,7 +156,10 @@ public sealed class GXScriptService
         }
         catch
         {
-            if (created) File.Delete(path);
+            if (created)
+            {
+                File.Delete(path);
+            }
             throw;
         }
     }
@@ -140,7 +167,9 @@ public sealed class GXScriptService
     {
         Validate(manifest);
         if (!NuGetVersion.TryParse(amiVersion, out var version) || !VersionRange.Parse(manifest.AmiVersionRange).Satisfies(version))
+        {
             throw new InvalidDataException("Script is incompatible with the supplied AMI version.");
+        }
     }
     /// <summary>Loads installed provenance and verifies the retained original source.</summary>
     public async Task<GXInstalledScript> GetInstalledAsync(string path, CancellationToken token = default)
@@ -159,7 +188,10 @@ public sealed class GXScriptService
     public async Task<string?> RejectChangesAsync(string path, CancellationToken token = default)
     {
         var state = await GetInstalledAsync(path, token);
-        if (!await IsModifiedAsync(path, token)) return null;
+        if (!await IsModifiedAsync(path, token))
+        {
+            return null;
+        }
         string? backup = Backup(path);
         await AtomicWriteAsync(path, state.Original, token);
         return backup;
@@ -169,9 +201,15 @@ public sealed class GXScriptService
     {
         var state = await GetInstalledAsync(path, token);
         var release = Select(await GetCatalogAsync(state.Source, token), state.Manifest.Id, includePrereleases: includePrereleases);
-        if (NuGetVersion.Parse(release.Version) <= NuGetVersion.Parse(state.Manifest.Version)) return false;
+        if (NuGetVersion.Parse(release.Version) <= NuGetVersion.Parse(state.Manifest.Version))
+        {
+            return false;
+        }
         ValidateCompatibility(release, amiVersion);
-        if (await IsModifiedAsync(path, token) && !discardLocalChanges) throw new InvalidOperationException("Script has local changes. Reject changes first or explicitly discard them.");
+        if (await IsModifiedAsync(path, token) && !discardLocalChanges)
+        {
+            throw new InvalidOperationException("Script has local changes. Reject changes first or explicitly discard them.");
+        }
         var bytes = await reader.ReadAsync(reader.ResolveReference(state.Source, release.Path), token);
         Verify(release, bytes);
         Backup(path);
@@ -180,7 +218,10 @@ public sealed class GXScriptService
     }
     private static string? Backup(string path)
     {
-        if (!File.Exists(path)) return null;
+        if (!File.Exists(path))
+        {
+            return null;
+        }
         var backup = path + "." + Guid.NewGuid().ToString("N") + ".bak";
         File.Copy(path, backup, overwrite: false);
         return backup;
@@ -192,8 +233,14 @@ public sealed class GXScriptService
         try { await AtomicWriteAsync(path + ".gurux.json", JsonSerializer.SerializeToUtf8Bytes(state, Json), token); }
         catch
         {
-            if (old == null) File.Delete(path);
-            else await AtomicWriteAsync(path, old, CancellationToken.None);
+            if (old == null)
+            {
+                File.Delete(path);
+            }
+            else
+            {
+                await AtomicWriteAsync(path, old, CancellationToken.None);
+            }
             throw;
         }
     }

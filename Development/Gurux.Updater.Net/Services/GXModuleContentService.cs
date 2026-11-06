@@ -39,7 +39,9 @@ public sealed class GXModuleContentService(HttpClient client)
     static void Kind(string kind)
     {
         if (kind is not ("localization" or "resources"))
+        {
             throw new ArgumentException("Module content kind must be localization or resources.");
+        }
     }
 
     /// <summary>Lists compatible stable module releases from the corresponding localization/resource index.</summary>
@@ -54,9 +56,13 @@ public sealed class GXModuleContentService(HttpClient client)
         {
             var catalog = GXLocalizationJson.Read<GXResourceCatalog>(await reader.ReadAsync(index, token), index);
             if (catalog.SchemaVersion != 1 || catalog.Items == null)
+            {
                 throw new InvalidDataException("Invalid resource index.");
+            }
             foreach (var manifest in catalog.Items)
+            {
                 GXContentReleaseService.ValidateManifest(manifest);
+            }
             manifests = catalog.Items.Where(x => x.ModulePackage);
         }
         else
@@ -81,10 +87,14 @@ public sealed class GXModuleContentService(HttpClient client)
         {
             GXContentReleaseService.ValidateManifest(manifest);
             if (manifest.Kind != kind)
+            {
                 throw new InvalidDataException("Index contains the wrong content kind.");
+            }
         }
         if (all.GroupBy(x => x.Tag, StringComparer.OrdinalIgnoreCase).Any(x => x.Count() > 1))
+        {
             throw new InvalidDataException("Duplicate module content release.");
+        }
         return all.Where(x => x.Owner == owner && x.OwnerType == "module" && !GXLocalizationJson.Version(x.Version).IsPrerelease &&
             VersionRange.Parse(x.OwnerVersionRange!).Satisfies(version)).OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease).ToList();
     }
@@ -101,10 +111,14 @@ public sealed class GXModuleContentService(HttpClient client)
     {
         string state = StatePath(root, kind);
         if (!File.Exists(state))
+        {
             return null;
+        }
         var manifest = GXContentReleaseService.ReadManifest(File.ReadAllBytes(state));
         if (!manifest.ModulePackage || manifest.Owner != owner || manifest.Kind != kind)
+        {
             throw new InvalidDataException("Installed resource identity differs from requested module/type.");
+        }
         return manifest;
     }
 
@@ -114,7 +128,9 @@ public sealed class GXModuleContentService(HttpClient client)
     {
         var latest = (await ListAsync(index, owner, kind, ownerVersion, token)).FirstOrDefault();
         if (latest == null)
+        {
             return false;
+        }
         var previous = Installed(ManagedRoot(install), owner, kind);
         return previous == null || VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(latest.Version), GXLocalizationJson.Version(previous.Version)) > 0;
     }
@@ -130,7 +146,9 @@ public sealed class GXModuleContentService(HttpClient client)
         if (previous != null && VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(latest.Version), GXLocalizationJson.Version(previous.Version)) <= 0)
         {
             if (latest.Version == previous.Version && latest.Sha256 != previous.Sha256)
+            {
                 throw new InvalidDataException("Published content changed without a new version.");
+            }
             return false;
         }
         string reference = latest.Path;
@@ -150,7 +168,9 @@ public sealed class GXModuleContentService(HttpClient client)
         // Another updater may have completed while this one was downloading.
         previous = Installed(root, owner, kind);
         if (previous != null && VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(latest.Version), GXLocalizationJson.Version(previous.Version)) <= 0)
+        {
             return false;
+        }
         string target = ContentDirectory(root, kind);
         string staging = GXLocalizationService.ManagedPath(root, ".gurux-staging-" + Guid.NewGuid().ToString("N"));
         string backup = GXLocalizationService.ManagedPath(root, ".gurux-backup-" + Guid.NewGuid().ToString("N"));
@@ -159,14 +179,18 @@ public sealed class GXModuleContentService(HttpClient client)
         try
         {
             if (assets != null)
+            {
                 foreach (var asset in assets)
-                {
-                    string path = GXLocalizationService.ManagedPath(staging, asset.Key);
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    await File.WriteAllBytesAsync(path, asset.Value, token);
-                }
+                    {
+                        string path = GXLocalizationService.ManagedPath(staging, asset.Key);
+                        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                        await File.WriteAllBytesAsync(path, asset.Value, token);
+                    }
+            }
             else
+            {
                 await File.WriteAllBytesAsync(GXLocalizationService.ManagedPath(staging, owner + ".json"), bytes, token);
+            }
             await File.WriteAllBytesAsync(GXLocalizationService.ManagedPath(staging, ".gurux-release.json"),
                 JsonSerializer.SerializeToUtf8Bytes(latest, GXLocalizationJson.Options), token);
             token.ThrowIfCancellationRequested();
@@ -178,16 +202,22 @@ public sealed class GXModuleContentService(HttpClient client)
             catch
             {
                 if (movedOld)
+                {
                     Directory.Move(backup, target);
+                }
                 throw;
             }
         }
         finally
         {
             if (Directory.Exists(staging))
+            {
                 Directory.Delete(staging, true);
+            }
             if (installed && Directory.Exists(backup))
+            {
                 Directory.Delete(backup, true);
+            }
         }
         return true;
     }

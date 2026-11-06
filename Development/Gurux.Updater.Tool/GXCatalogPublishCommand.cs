@@ -43,7 +43,9 @@ public static class GXCatalogPublishCommand
         if (Path.GetExtension(packagePath).Equals(".json", StringComparison.OrdinalIgnoreCase))
         {
             if (options.Product != null || options.PackageType != null || options.PackageVersion != null || options.IncludePrereleases)
+            {
                 throw new ArgumentException("Localization identity and version must be specified in the JSON package, without ZIP metadata overrides.");
+            }
             var service = new GXLocalizationService(client, allowHttp: true);
             var package = await service.ReadPackageAsync(packagePath, cancellationToken);
             var index = await GXLocalizationCommand.ResolveIndexAsync(client, options.CatalogUrl, cancellationToken);
@@ -51,7 +53,9 @@ public static class GXCatalogPublishCommand
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
             using var response = await client.PostAsync(index, content, cancellationToken);
             if (!response.IsSuccessStatusCode)
+            {
                 throw new HttpRequestException($"Publishing localization '{package.Owner}' version '{package.Version}' failed: HTTP {(int)response.StatusCode}. {await response.Content.ReadAsStringAsync(cancellationToken)}", null, response.StatusCode);
+            }
             await output.WriteLineAsync(options.Json ? await response.Content.ReadAsStringAsync(cancellationToken)
                 : response.StatusCode == System.Net.HttpStatusCode.OK
                     ? $"Already published: {package.Owner} {package.Version}"

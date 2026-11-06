@@ -42,45 +42,81 @@ public static class GXDeploymentRestoration
     static async Task<GXDeploymentStatus?> ReadPreviousCoreAsync(string root, string? currentVersion, bool compose, bool validateSnapshot, CancellationToken token)
     {
         string history = Path.Combine(root, "history");
-        if (!Directory.Exists(history) || currentVersion is null) return null;
+        if (!Directory.Exists(history) || currentVersion is null)
+        {
+            return null;
+        }
         GXDeploymentStatus? latest = null;
         foreach (string path in Directory.EnumerateFiles(history, "*.json"))
         {
-            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out _) || new FileInfo(path).LinkTarget is not null) continue;
+            if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out _) || new FileInfo(path).LinkTarget is not null)
+            {
+                continue;
+            }
             GXDeploymentStatus? entry;
             try { entry = JsonSerializer.Deserialize<GXDeploymentStatus>(await File.ReadAllTextAsync(path, token), Json); }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { return null; }
-            if (entry?.State == "Succeeded" && (latest is null || entry.UpdatedAt > latest.UpdatedAt)) latest = entry;
+            if (entry?.State == "Succeeded" && (latest is null || entry.UpdatedAt > latest.UpdatedAt))
+            {
+                latest = entry;
+            }
         }
-        if (latest is null || latest.RestorePrevious || latest.Version != currentVersion || !Guid.TryParseExact(latest.RequestId, "N", out _)) return null;
+        if (latest is null || latest.RestorePrevious || latest.Version != currentVersion || !Guid.TryParseExact(latest.RequestId, "N", out _))
+        {
+            return null;
+        }
         try
         {
             if (compose)
             {
                 var transaction = latest.Compose;
-                if (transaction is null || transaction.PreviousVersion == currentVersion) return null;
+                if (transaction is null || transaction.PreviousVersion == currentVersion)
+                {
+                    return null;
+                }
                 GXDeploymentQueue.ValidateVersion(transaction.PreviousVersion);
                 string directory = Path.Combine(root, "transactions", latest.RequestId!);
                 if (Path.GetFullPath(transaction.SnapshotFile) != Path.Combine(directory, "compose.previous.json") ||
-                    transaction.PreviousImages.Count == 0 || transaction.PreviousImageIds.Count != transaction.PreviousImages.Count) return null;
+                    transaction.PreviousImages.Count == 0 || transaction.PreviousImageIds.Count != transaction.PreviousImages.Count)
+                {
+                    return null;
+                }
                 if (validateSnapshot && (new DirectoryInfo(directory).LinkTarget is not null ||
                     !File.Exists(transaction.SnapshotFile) || new FileInfo(transaction.SnapshotFile).LinkTarget is not null ||
-                    Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(transaction.SnapshotFile, token))) != transaction.SnapshotSha256)) return null;
+                    Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(transaction.SnapshotFile, token))) != transaction.SnapshotSha256))
+                {
+                    return null;
+                }
             }
             else
             {
-                if (latest.Compose is not null || latest.PreviousTarget is null) return null;
+                if (latest.Compose is not null || latest.PreviousTarget is null)
+                {
+                    return null;
+                }
                 string previous = Path.GetFullPath(Path.Combine(root, latest.PreviousTarget));
-                if (Path.GetDirectoryName(previous) != Path.Combine(root, "releases")) return null;
+                if (Path.GetDirectoryName(previous) != Path.Combine(root, "releases"))
+                {
+                    return null;
+                }
                 string version = Path.GetFileName(previous);
                 GXDeploymentQueue.ValidateVersion(version);
-                if (version == currentVersion) return null;
+                if (version == currentVersion)
+                {
+                    return null;
+                }
                 if (validateSnapshot)
                 {
-                    if (!Directory.Exists(previous) || new DirectoryInfo(previous).LinkTarget is not null) return null;
+                    if (!Directory.Exists(previous) || new DirectoryInfo(previous).LinkTarget is not null)
+                    {
+                        return null;
+                    }
                     string marker = File.Exists(Path.Combine(previous, "wwwroot", "version.json")) ? Path.Combine(previous, "wwwroot", "version.json") : Path.Combine(previous, "version.json");
                     using var json = JsonDocument.Parse(await File.ReadAllTextAsync(marker, token));
-                    if (json.RootElement.GetProperty("version").GetString() != version) return null;
+                    if (json.RootElement.GetProperty("version").GetString() != version)
+                    {
+                        return null;
+                    }
                 }
             }
             return latest;

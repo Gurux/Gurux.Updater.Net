@@ -57,16 +57,26 @@ public static class GXUpdateText
             _ => "Update status is unknown"
         };
         if (info.Compatibility is { IsCompatible: false } compatibility)
+        {
             text += " — " + (compatibility.IsAmiVersionCompatible == false ? "AMI version is outside the module's supported range" :
-                compatibility.AmiVersionRange is not null && compatibility.IsAmiVersionCompatible is null ? "AMI version is required to check module compatibility" :
-                compatibility.IsKnown ? "Module DLL versions are incompatible" : "Module dependency information is missing");
+                    compatibility.AmiVersionRange is not null && compatibility.IsAmiVersionCompatible is null ? "AMI version is required to check module compatibility" :
+                    compatibility.IsKnown ? "Module DLL versions are incompatible" : "Module dependency information is missing");
+        }
         if (info.UpdateAvailable)
         {
-            if (info.Status != GXUpdateStatus.UpdateAvailable) text += " — Update available";
+            if (info.Status != GXUpdateStatus.UpdateAvailable)
+            {
+                text += " — Update available";
+            }
             if (info.Priority != GXUpdatePriority.Normal || info.IsSecurityUpdate)
+            {
                 text += " — " + Priority(info.Priority, info.IsSecurityUpdate);
+            }
         }
-        if (info.MaintenanceStatus == "unsupported") text += " — Project is unsupported";
+        if (info.MaintenanceStatus == "unsupported")
+        {
+            text += " — Project is unsupported";
+        }
         return text;
     }
 }

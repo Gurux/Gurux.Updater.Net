@@ -88,9 +88,13 @@ public sealed class GXLocalizationService
             IEnumerable<GXLocalizationRelease> releases = item.Releases.Where(x => includePrereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease)
                 .OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease);
             if (item.Releases.Any(x => x.Culture != null) && !allVersions)
+            {
                 releases = releases.Where(x => x.Culture != null);
+            }
             if (culture != null && item.Releases.Any(x => x.Culture != null))
+            {
                 releases = releases.Where(x => string.Equals(x.Culture, culture, StringComparison.OrdinalIgnoreCase));
+            }
             if (!allVersions)
             {
                 releases = releases.GroupBy(x => x.Culture).Select(x => x.First());
@@ -133,7 +137,10 @@ public sealed class GXLocalizationService
         byte[] bytes = await reader.ReadAsync(packagePath, cancellationToken);
         var package = GXLocalizationJson.Read<GXLocalizationPackage>(bytes, packagePath);
         GXLocalizationJson.ValidatePackage(package);
-        if (package.SchemaVersion != 1) throw new InvalidOperationException("Use the source publisher for schema 2 immutable language releases.");
+        if (package.SchemaVersion != 1)
+        {
+            throw new InvalidOperationException("Use the source publisher for schema 2 immutable language releases.");
+        }
         GXLocalizationCatalog catalog = File.Exists(catalogPath)
             ? await GetCatalogAsync(catalogPath, cancellationToken) : new();
         var item = catalog.Items.SingleOrDefault(x => x.Owner == package.Owner);
@@ -150,7 +157,9 @@ public sealed class GXLocalizationService
             throw new InvalidOperationException($"Owner '{package.Owner}' has type '{item.OwnerType}', not '{package.OwnerType}'.");
         }
         if (item?.Releases.Any(x => x.Culture != null) == true)
+        {
             throw new InvalidOperationException("Owner has migrated to language packages; new legacy releases are disabled.");
+        }
         NuGetVersion version = GXLocalizationJson.Version(package.Version);
         var previous = item?.Releases.SingleOrDefault(x => VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), version));
         if (previous != null && !replace)
@@ -211,8 +220,13 @@ public sealed class GXLocalizationService
         NuGetVersion? ownerValue = ownerVersion == null ? null : GXLocalizationJson.Version(ownerVersion);
         NuGetVersion? requested = version == null ? null : GXLocalizationJson.Version(version);
         if (item.Releases.Any(x => x.Culture != null) && culture == null)
+        {
             throw new ArgumentException("--culture is required for an owner with independent language packages. Legacy packages require an explicit legacy version through a legacy-only index.");
-        if (culture != null) culture = GXLocalizationJson.Culture(culture);
+        }
+        if (culture != null)
+        {
+            culture = GXLocalizationJson.Culture(culture);
+        }
         var release = item.Releases.Where(x => (includePrereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease) &&
                 (culture == null ? x.Culture == null : x.Culture == culture || !item.Releases.Any(r => r.Culture != null) && x.Cultures.Contains(culture, StringComparer.OrdinalIgnoreCase)) &&
                 (requested == null || VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), requested)) &&
@@ -269,7 +283,10 @@ public sealed class GXLocalizationService
             }
             finally
             {
-                if (Directory.Exists(staging)) Directory.Delete(staging, true);
+                if (Directory.Exists(staging))
+                {
+                    Directory.Delete(staging, true);
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -282,7 +299,9 @@ public sealed class GXLocalizationService
     private static GXLocalizationRelease? SelectUpdate(GXLocalizationCatalogItem item, GXLocalizationPackage installed, bool prereleases, string? ownerVersion)
     {
         if (installed.Culture == null && item.Releases.Any(x => x.Culture != null))
+        {
             throw new InvalidOperationException($"Owner '{installed.Owner}' uses independent language packages. Migrate explicitly by downloading each --culture into separate files; the legacy all-language package is never replaced by one language.");
+        }
         var owner = ownerVersion == null ? null : GXLocalizationJson.Version(ownerVersion);
         return item.Releases.Where(x => x.Culture == installed.Culture && (prereleases || !GXLocalizationJson.Version(x.Version).IsPrerelease) &&
             (owner == null || x.OwnerVersionRange == null || VersionRange.Parse(x.OwnerVersionRange).Satisfies(owner)))
@@ -296,7 +315,10 @@ public sealed class GXLocalizationService
         var package = await ReadPackageAsync(packagePath, cancellationToken);
         var catalog = await GetCatalogAsync(catalogSource, cancellationToken);
         var item = catalog.Items.SingleOrDefault(x => x.Owner == package.Owner) ?? throw new InvalidDataException($"Owner '{package.Owner}' is not published.");
-        if (item.OwnerType != package.OwnerType) throw new InvalidDataException("Installed owner type differs from catalog.");
+        if (item.OwnerType != package.OwnerType)
+        {
+            throw new InvalidDataException("Installed owner type differs from catalog.");
+        }
         var release = SelectUpdate(item, package, includePrereleases, ownerVersion) ?? throw new InvalidOperationException($"No compatible release for '{package.Owner}/{package.Culture}'.");
         return new(package.Owner, package.Culture, package.Version, release.Version,
             VersionComparer.VersionRelease.Compare(GXLocalizationJson.Version(release.Version), GXLocalizationJson.Version(package.Version)) > 0, null);
@@ -344,22 +366,33 @@ public sealed class GXLocalizationService
                     await original.CopyToAsync(content, cancellationToken);
                 }
             }
-            if (packages == 0) throw new InvalidDataException("The localization ZIP contains no JSON packages.");
+            if (packages == 0)
+            {
+                throw new InvalidDataException("The localization ZIP contains no JSON packages.");
+            }
             if (!updated)
             {
-                foreach (var result in stagedResults) results?.Add(result);
+                foreach (var result in stagedResults)
+                {
+                    results?.Add(result);
+                }
                 return false;
             }
             cancellationToken.ThrowIfCancellationRequested();
             RejectLink(target);
             File.Move(replacement, target, true);
-            foreach (var result in stagedResults) results?.Add(result);
+            foreach (var result in stagedResults)
+            {
+                results?.Add(result);
+            }
             return true;
         }
         catch
         {
             foreach (var result in stagedResults)
+            {
                 results?.Add(result with { Updated = false, Error = result.Error ?? (result.Updated ? "ZIP transaction rolled back; no languages installed." : null) });
+            }
             throw;
         }
         finally

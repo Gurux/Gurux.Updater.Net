@@ -41,7 +41,9 @@ public static class GXDeploymentAuthentication
     {
         GXDeploymentQueue.ValidateVersion(version);
         if (!Guid.TryParseExact(requestId, "N", out _))
+        {
             throw new ArgumentException("A transaction GUID is required.");
+        }
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         string signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key.Trim()), Encoding.UTF8.GetBytes(requestId + "\n" + version + (restorePrevious ? "\nrestore-previous" : "")))).ToLowerInvariant();
         return new(version, requestId, signature, restorePrevious);
@@ -54,7 +56,9 @@ public static class GXDeploymentAuthentication
             var expected = Sign(request.Version, request.RequestId ?? "", key, request.RestorePrevious).Signature!;
             if (request.Signature is not { Length: 64 } || !request.Signature.All(Uri.IsHexDigit) ||
                 !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expected), Convert.FromHexString(request.Signature)))
+            {
                 throw new UnauthorizedAccessException("Invalid deployment request signature.");
+            }
         }
         catch (ArgumentException) { throw new UnauthorizedAccessException("Invalid deployment request identity."); }
     }

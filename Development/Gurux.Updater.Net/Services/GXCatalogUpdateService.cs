@@ -89,7 +89,10 @@ public sealed class GXCatalogUpdateService
 
         cancellationToken.ThrowIfCancellationRequested();
         GXCatalogMetadata.ValidateAmiVersionRange(metadata.AmiVersionRange);
-        if (metadata.References is not null) GXModuleCompatibility.ValidateReferences(metadata.References);
+        if (metadata.References is not null)
+        {
+            GXModuleCompatibility.ValidateReferences(metadata.References);
+        }
         await using FileStream file = File.OpenRead(packagePath);
         using (ZipArchive zip = new(file, ZipArchiveMode.Read, leaveOpen: true))
         {
@@ -109,9 +112,14 @@ public sealed class GXCatalogUpdateService
         {
             fields.Add(new("name", metadata.Name));
         }
-        if (metadata.AmiVersionRange is not null) fields.Add(new("amiVersionRange", metadata.AmiVersionRange));
+        if (metadata.AmiVersionRange is not null)
+        {
+            fields.Add(new("amiVersionRange", metadata.AmiVersionRange));
+        }
         if (metadata.References is not null)
+        {
             fields.Add(new("references", JsonSerializer.Serialize(metadata.References, JsonOptions)));
+        }
 
         UriBuilder uri = new(catalogUri);
         string query = string.Join("&", fields.Select(x => Uri.EscapeDataString(x.Key) + "=" + Uri.EscapeDataString(x.Value)));
@@ -305,7 +313,10 @@ public sealed class GXCatalogUpdateService
                 (target.AvailableAssemblies is not null || recommended.Release.AmiVersionRange is not null)
                 ? GXModuleCompatibility.Check(recommended.Release, target.AvailableAssemblies, target.AmiVersion) : null;
             bool blocked = available && compatibility is { IsCompatible: false };
-            if (blocked) available = false;
+            if (blocked)
+            {
+                available = false;
+            }
             GXUpdateStatus status = installedReleases.Any(x => x.Release.IsRevoked) ? GXUpdateStatus.Revoked :
                 installedReleases.Any(x => x.Release.IsUnsupported) ? GXUpdateStatus.Unsupported :
                 recommended.Release is null || blocked ? GXUpdateStatus.Unknown :
@@ -406,9 +417,15 @@ public sealed class GXCatalogUpdateService
 
             foreach (GXUpdateRelease release in item.Releases)
             {
-                if (release.Compose is not null) GXComposeDeploymentService.ValidateMetadata(release.Compose);
+                if (release.Compose is not null)
+                {
+                    GXComposeDeploymentService.ValidateMetadata(release.Compose);
+                }
                 GXCatalogMetadata.ValidateAmiVersionRange(release.AmiVersionRange);
-                if (release.References is not null) GXModuleCompatibility.ValidateReferences(release.References);
+                if (release.References is not null)
+                {
+                    GXModuleCompatibility.ValidateReferences(release.References);
+                }
                 if (!Enum.IsDefined(release.Priority))
                 {
                     throw new InvalidDataException($"Invalid release priority for '{item.Id}' version '{release.Version}'.");

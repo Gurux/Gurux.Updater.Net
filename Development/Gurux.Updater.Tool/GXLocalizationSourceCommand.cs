@@ -53,12 +53,16 @@ internal static class GXLocalizationSourceCommand
         {
             string name = args[pos];
             if (!allowed.Contains(name) || options.ContainsKey(name))
+            {
                 throw new ArgumentException($"Unknown or duplicate option '{name}' for localization {command}.");
+            }
             string? value = null;
             if (name is not ("--json" or "--include-prereleases"))
             {
                 if (++pos == args.Length || args[pos].StartsWith("--"))
+                {
                     throw new ArgumentException($"A value is required for {name}.");
+                }
                 value = args[pos];
             }
             options.Add(name, value);
@@ -67,19 +71,25 @@ internal static class GXLocalizationSourceCommand
         string Required(string name) => Get(name) ?? throw new ArgumentException($"{name} is required.");
         bool Has(string name) => options.ContainsKey(name);
         if (Has("--catalog-url") && Has("--index"))
+        {
             throw new ArgumentException("Choose --catalog-url or --index, not both.");
+        }
         string? index = Get("--index");
         if (Has("--catalog-url"))
         {
             if (!Uri.TryCreate(Required("--catalog-url"), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            {
                 throw new ArgumentException("--catalog-url requires HTTP or HTTPS.");
+            }
             index = (await GXLocalizationCommand.ResolveIndexAsync(client, uri, token)).AbsoluteUri;
         }
         var publisher = new GXLocalizationPublisher(client);
         var service = new GXLocalizationService(client, allowHttp: true);
         object result;
         if (command == "publish-package")
+        {
             result = await publisher.PublishLegacyAsync(Required("--package"), Required("--index"), token);
+        }
         else if (command == "validate-store")
         {
             await publisher.ValidateStoreAsync(Required("--index"), token);
@@ -95,7 +105,9 @@ internal static class GXLocalizationSourceCommand
         {
             index ??= (await GXLocalizationCommand.ResolveIndexAsync(client, new("http://localhost:8000/catalog.json"), token)).AbsoluteUri;
             if (command == "status")
+            {
                 result = await service.StatusAsync(index, Required("--package"), Get("--owner-version"), Has("--include-prereleases"), token);
+            }
             else
             {
                 List<GXLocalizationUpdateResult> results = [];
@@ -117,33 +129,47 @@ internal static class GXLocalizationSourceCommand
             if (Has("--sources"))
             {
                 if (Has("--source") || Has("--owner") || Has("--project") || Has("--metadata-package") || Has("--owner-type") || Has("--default-culture") || Has("--owner-version-range"))
+                {
                     throw new ArgumentException("Source overrides cannot be combined with --sources.");
+                }
                 sources = GXLocalizationPublicationIO.ReadSources(Required("--sources"));
             }
             else
+            {
                 sources = [new() { Directory = Required("--source"), Project = Get("--project"), MetadataPackage = Get("--metadata-package"), Owner = Get("--owner"), OwnerType = Get("--owner-type"), DefaultCulture = Get("--default-culture"), OwnerVersionRange = Get("--owner-version-range") }];
+            }
             if (sources.Count == 0)
             { await output.WriteLineAsync(JsonSerializer.Serialize(new GXLocalizationPublicationPlan(), Json)); return; }
             var snapshot = await publisher.ReadSourcesAsync(sources, token);
             if (command == "validate-source")
+            {
                 result = new { valid = true, packages = snapshot.Packages.Count };
+            }
             else
             {
                 if (index == null)
+                {
                     throw new ArgumentException("--index or --catalog-url is required for plan/publish-sources.");
+                }
                 if (command == "plan")
+                {
                     result = await publisher.PlanSnapshotAsync(snapshot, index, token);
+                }
                 else if (Uri.TryCreate(index, UriKind.Absolute, out var uri) && !uri.IsFile)
                 {
                     using var content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(snapshot, Json));
                     content.Headers.ContentType = new("application/json");
                     using var response = await client.PostAsync(uri, content, token);
                     if (!response.IsSuccessStatusCode)
+                    {
                         throw new InvalidOperationException($"Localization publication failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync(token)}. GitHub Pages is read-only; use --index in a checkout and commit the history.");
+                    }
                     result = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(token));
                 }
                 else
+                {
                     result = await publisher.PublishSnapshotAsync(snapshot, index, token);
+                }
             }
         }
         await output.WriteLineAsync(JsonSerializer.Serialize(result, Json));

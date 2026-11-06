@@ -41,17 +41,25 @@ public static class GXLocalizationPublicationIO
     {
         var configuration = GXLocalizationJson.Read<SourceConfiguration>(File.ReadAllBytes(path), path);
         if (configuration.Sources == null)
+        {
             throw new InvalidDataException("sources must be an array.");
+        }
         string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         foreach (var source in configuration.Sources)
         {
             if (source == null || string.IsNullOrWhiteSpace(source.Directory))
+            {
                 throw new InvalidDataException("Each localization source requires directory.");
+            }
             source.Directory = Path.GetFullPath(source.Directory, directory);
             if (source.Project != null)
+            {
                 source.Project = Path.GetFullPath(source.Project, directory);
+            }
             if (source.MetadataPackage != null)
+            {
                 source.MetadataPackage = Path.GetFullPath(source.MetadataPackage, directory);
+            }
         }
         return configuration.Sources;
     }

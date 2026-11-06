@@ -69,11 +69,17 @@ public static class GXScriptCommand
         for (int pos = 1; pos < args.Length; pos++)
         {
             string name = args[pos];
-            if (!permitted.Contains(name) || options.ContainsKey(name)) throw new ArgumentException($"Unknown or duplicate option '{name}'.");
+            if (!permitted.Contains(name) || options.ContainsKey(name))
+            {
+                throw new ArgumentException($"Unknown or duplicate option '{name}'.");
+            }
             string? value = null;
             if (name is not ("--json" or "--prerelease" or "--discard-local-changes"))
             {
-                if (++pos == args.Length || args[pos].StartsWith("--")) throw new ArgumentException($"Value required for {name}.");
+                if (++pos == args.Length || args[pos].StartsWith("--"))
+                {
+                    throw new ArgumentException($"Value required for {name}.");
+                }
                 value = args[pos];
             }
             options.Add(name, value);
@@ -105,8 +111,13 @@ public static class GXScriptCommand
         {
             string source = options.GetValueOrDefault("--catalog-url") ?? "http://localhost:8000/scripts/script-index.json";
             if (!Uri.TryCreate(source, UriKind.Absolute, out var address) || address.Scheme is not ("http" or "https"))
+            {
                 throw new ArgumentException("--catalog-url requires an HTTP(S) URL.");
-            if (address.AbsolutePath == "/") address = new Uri(address, "catalog.json");
+            }
+            if (address.AbsolutePath == "/")
+            {
+                address = new Uri(address, "catalog.json");
+            }
             if (!address.AbsolutePath.EndsWith("/script-index.json", StringComparison.OrdinalIgnoreCase))
             {
                 var catalogService = new GXCatalogUpdateService(client);
@@ -124,11 +135,13 @@ public static class GXScriptCommand
             {
                 var catalog = await service.GetCatalogAsync(source, token);
                 if (command == "list")
+                {
                     result = catalog.Items.GroupBy(m => m.Id).Select(g =>
-                    {
-                        try { return service.Select(catalog, g.Key, includePrereleases: Has("--prerelease")); }
-                        catch (InvalidDataException) { return null; }
-                    }).Where(m => m != null).ToArray();
+                        {
+                            try { return service.Select(catalog, g.Key, includePrereleases: Has("--prerelease")); }
+                            catch (InvalidDataException) { return null; }
+                        }).Where(m => m != null).ToArray();
+                }
                 else
                 {
                     var release = service.Select(catalog, Required("--id"), options.GetValueOrDefault("--version"), Has("--prerelease"));

@@ -37,7 +37,9 @@ internal static class GXContentCommand
     internal static async Task RunAsync(HttpClient client, string[] args, TextWriter output)
     {
         if (args.Length == 0)
+        {
             throw new ArgumentException("content prepare|rebuild|build-module|verify-manifest|verify|import|validate-resources|list-module|check-module|update-module; module options: --sources <json> --version <version> --kind localization|resources --output <directory>, or --index <index> --owner <module> --owner-version <version> [--install <module-directory>]");
+        }
         string command = args[0];
         var allowed = command switch
         {
@@ -54,8 +56,12 @@ internal static class GXContentCommand
         };
         var options = new Dictionary<string, string>();
         for (int pos = 1; pos < args.Length; pos += 2)
+        {
             if (pos + 1 >= args.Length || !allowed.Contains(args[pos]) || !options.TryAdd(args[pos], args[pos + 1]))
-                throw new ArgumentException("Unknown, duplicate or incomplete content option.");
+                {
+                    throw new ArgumentException("Unknown, duplicate or incomplete content option.");
+                }
+        }
         string Get(string name) => options.GetValueOrDefault(name) ?? throw new ArgumentException($"{name} is required.");
         var service = new GXContentReleaseService(client);
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true, NewLine = "\n" };
@@ -74,12 +80,16 @@ internal static class GXContentCommand
             var sources = GXContentReleaseService.ReadSources(Get("--sources"));
             List<string> warnings = [];
             if (command == "build-module" && (sources.Count != 1 || sources[0].Kind != Get("--kind")))
+            {
                 throw new ArgumentException("build-module requires exactly one source matching --kind.");
+            }
             var packages = command == "build-module" ? new List<GXPreparedContent> { await service.BuildModuleAsync(sources.Single(), Get("--version")) }
                 : command == "prepare" ? await service.PrepareAsync(sources, GXContentReleaseService.ReadHistory(File.ReadAllBytes(Get("--history"))), warnings: warnings)
                 : [await service.RebuildAsync(sources, Manifest())];
             foreach (string warning in warnings)
+            {
                 await Console.Error.WriteLineAsync(warning);
+            }
             var entries = new List<object>();
             int ordinal = 0;
             foreach (var package in packages)
@@ -109,7 +119,9 @@ internal static class GXContentCommand
             var bytes = await File.ReadAllBytesAsync(Get("--package"));
             GXContentReleaseService.ValidatePackage(manifest, bytes);
             if (command == "import")
+            {
                 await service.ImportAsync(manifest, bytes, Get("--catalog-root"));
+            }
             result = new { valid = true, tag = manifest.Tag };
         }
         await output.WriteLineAsync(JsonSerializer.Serialize(result, json));

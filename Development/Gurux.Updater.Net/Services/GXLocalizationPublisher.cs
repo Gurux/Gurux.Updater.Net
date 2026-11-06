@@ -44,16 +44,24 @@ public sealed class GXLocalizationPublisher(HttpClient client)
     /// <summary>Checks that a publishable checkout contains every referenced package, with matching identities and hashes.</summary>
     public async Task ValidateStoreAsync(string index, CancellationToken token = default)
     {
-        if (Uri.TryCreate(index, UriKind.Absolute, out var uri) && !uri.IsFile) throw new ArgumentException("A store must be local.");
+        if (Uri.TryCreate(index, UriKind.Absolute, out var uri) && !uri.IsFile)
+        {
+            throw new ArgumentException("A store must be local.");
+        }
         index = Path.GetFullPath(index);
         var catalog = await service.GetCatalogAsync(index, token);
         string directory = Path.GetDirectoryName(index)!;
         foreach (var release in catalog.Items.SelectMany(x => x.Releases))
         {
             if (Uri.TryCreate(release.Path, UriKind.Absolute, out _) || Path.IsPathRooted(release.Path) || release.Path.Contains('\\'))
+            {
                 throw new InvalidDataException("A published store must use safe relative package paths.");
+            }
             string path = GXLocalizationService.ManagedPath(directory, release.Path);
-            if (!File.Exists(path)) throw new InvalidDataException($"Missing published package: {release.Path}");
+            if (!File.Exists(path))
+            {
+                throw new InvalidDataException($"Missing published package: {release.Path}");
+            }
         }
         await service.ValidateAllAsync(index, token);
     }
@@ -66,7 +74,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
         {
             string directory = Path.GetFullPath(source.Directory);
             GXLocalizationService.RejectLink(directory);
-            if (!Directory.Exists(directory)) throw new InvalidDataException($"Localization directory does not exist: {directory}");
+            if (!Directory.Exists(directory))
+            {
+                throw new InvalidDataException($"Localization directory does not exist: {directory}");
+            }
             var metadata = await ProjectMetadataAsync(source, directory, token);
             string owner = source.Owner ?? metadata.GetValueOrDefault("PackageId") ?? metadata.GetValueOrDefault("AssemblyName") ?? "";
             string type = source.OwnerType ?? metadata.GetValueOrDefault("LocalizationOwnerType") ??
@@ -77,10 +88,16 @@ public sealed class GXLocalizationPublisher(HttpClient client)
             HashSet<string> cultures = new(StringComparer.OrdinalIgnoreCase);
             foreach (string path in Directory.EnumerateFiles(directory, "*.json").Order(StringComparer.Ordinal))
             {
-                if (Path.GetFileName(path) == "localization.json") continue; // not required, not used as a metadata source
+                if (Path.GetFileName(path) == "localization.json")
+                {
+                    continue;
+                } // not required, not used as a metadata source
                 GXLocalizationService.RejectLink(path);
                 string name = GXLocalizationJson.Culture(Path.GetFileNameWithoutExtension(path));
-                if (!cultures.Add(name)) throw new InvalidDataException($"Duplicate normalized culture '{name}' in '{directory}'.");
+                if (!cultures.Add(name))
+                {
+                    throw new InvalidDataException($"Duplicate normalized culture '{name}' in '{directory}'.");
+                }
                 var resources = GXLocalizationJson.Read<Dictionary<string, string>>(await File.ReadAllBytesAsync(path, token), path);
                 var package = new GXLocalizationPackage { SchemaVersion = 2, Owner = owner, OwnerType = type, Culture = name,
                     Version = "1.0.0", DefaultCulture = culture, OwnerVersionRange = source.OwnerVersionRange ?? metadata.GetValueOrDefault("LocalizationOwnerVersionRange"),
@@ -88,7 +105,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
                 GXLocalizationJson.ValidatePackage(package);
                 snapshot.Packages.Add(package);
             }
-            if (cultures.Count == 0) throw new InvalidDataException($"No culture JSON files found in '{directory}'.");
+            if (cultures.Count == 0)
+            {
+                throw new InvalidDataException($"No culture JSON files found in '{directory}'.");
+            }
         }
         ValidateSnapshot(snapshot);
         return snapshot;
@@ -99,13 +119,21 @@ public sealed class GXLocalizationPublisher(HttpClient client)
         // Explicit content releases must not execute even metadata targets in a module project.
         if (source.Project == null && source.MetadataPackage == null && source.Owner != null && source.OwnerType != null &&
             source.DefaultCulture != null && source.OwnerVersionRange != null)
+        {
             return new(StringComparer.Ordinal);
+        }
         if (source.MetadataPackage != null)
         {
-            if (source.Project != null) throw new InvalidDataException("Choose project or metadataPackage for inference.");
+            if (source.Project != null)
+            {
+                throw new InvalidDataException("Choose project or metadataPackage for inference.");
+            }
             using var archive = ZipFile.OpenRead(source.MetadataPackage);
             var specifications = archive.Entries.Where(x => x.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase)).ToList();
-            if (specifications.Count > 1) throw new InvalidDataException("Metadata package has ambiguous NuGet specifications.");
+            if (specifications.Count > 1)
+            {
+                throw new InvalidDataException("Metadata package has ambiguous NuGet specifications.");
+            }
             if (specifications.Count == 1)
             {
                 using var stream = specifications[0].Open();
@@ -114,10 +142,19 @@ public sealed class GXLocalizationPublisher(HttpClient client)
                 var metadata = specification.Root?.Elements().SingleOrDefault(x => x.Name.LocalName == "metadata") ?? throw new InvalidDataException("NuGet metadata is missing.");
                 string? Value(string name) => metadata.Elements().SingleOrDefault(x => x.Name.LocalName == name)?.Value;
                 var result = new Dictionary<string, string>(StringComparer.Ordinal);
-                if (Value("id") is { Length: > 0 } id) result["PackageId"] = id;
-                if (Value("language") is { Length: > 0 } language) result["NeutralLanguage"] = language;
+                if (Value("id") is { Length: > 0 } id)
+                {
+                    result["PackageId"] = id;
+                }
+                if (Value("language") is { Length: > 0 } language)
+                {
+                    result["NeutralLanguage"] = language;
+                }
                 var types = metadata.Descendants().Where(x => x.Name.LocalName == "packageType").Select(x => x.Attribute("name")?.Value).Where(x => x is "application" or "module").Distinct().ToList();
-                if (types.Count == 1) result["LocalizationOwnerType"] = types[0]!;
+                if (types.Count == 1)
+                {
+                    result["LocalizationOwnerType"] = types[0]!;
+                }
                 return result;
             }
             var info = GXCatalogPackageReader.Read(source.MetadataPackage);
@@ -129,19 +166,34 @@ public sealed class GXLocalizationPublisher(HttpClient client)
             for (var current = new DirectoryInfo(directory); current != null; current = current.Parent)
             {
                 var projects = current.GetFiles("*.csproj");
-                if (projects.Length > 1) break; // explicit metadata is still allowed
+                if (projects.Length > 1)
+                {
+                    break;
+                } // explicit metadata is still allowed
                 if (projects.Length == 1) { project = projects[0].FullName; break; }
             }
         }
-        if (project == null) return new(StringComparer.Ordinal);
+        if (project == null)
+        {
+            return new(StringComparer.Ordinal);
+        }
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
-        foreach (string arg in new[] { "msbuild", Path.GetFullPath(project), "-nologo", "-getProperty:PackageId,AssemblyName,OutputType,LocalizationOwnerType,LocalizationDefaultCulture,NeutralLanguage,LocalizationOwnerVersionRange" }) start.ArgumentList.Add(arg);
+        foreach (string arg in new[] { "msbuild", Path.GetFullPath(project), "-nologo", "-getProperty:PackageId,AssemblyName,OutputType,LocalizationOwnerType,LocalizationDefaultCulture,NeutralLanguage,LocalizationOwnerVersionRange" })
+        {
+            start.ArgumentList.Add(arg);
+        }
         using var process = Process.Start(start) ?? throw new InvalidDataException("Cannot evaluate project metadata.");
         var output = process.StandardOutput.ReadToEndAsync(token);
         var error = process.StandardError.ReadToEndAsync(token);
         try { await process.WaitForExitAsync(token); }
-        catch { if (!process.HasExited) process.Kill(true); throw; }
-        if (process.ExitCode != 0) throw new InvalidDataException($"Project metadata evaluation failed: {await error}");
+        catch { if (!process.HasExited)
+        {
+            process.Kill(true);
+        } throw; }
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidDataException($"Project metadata evaluation failed: {await error}");
+        }
         using var document = JsonDocument.Parse(await output);
         return document.RootElement.GetProperty("Properties").EnumerateObject().Where(x => x.Value.GetString() is { Length: > 0 })
             .ToDictionary(x => x.Name, x => x.Value.GetString()!, StringComparer.Ordinal);
@@ -162,14 +214,24 @@ public sealed class GXLocalizationPublisher(HttpClient client)
             writer.WriteString("releaseNotes", package.ReleaseNotes);
             writer.WritePropertyName("resources"); writer.WriteStartObject();
             if (package.SchemaVersion == 2)
-                foreach (var pair in package.Resources[package.Culture!].OrderBy(x => x.Key, StringComparer.Ordinal)) writer.WriteString(pair.Key, pair.Value);
+            {
+                foreach (var pair in package.Resources[package.Culture!].OrderBy(x => x.Key, StringComparer.Ordinal))
+                    {
+                        writer.WriteString(pair.Key, pair.Value);
+                    }
+            }
             else
+            {
                 foreach (var culture in package.Resources.OrderBy(x => x.Key, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(culture.Key); writer.WriteStartObject();
-                    foreach (var pair in culture.Value.OrderBy(x => x.Key, StringComparer.Ordinal)) writer.WriteString(pair.Key, pair.Value);
-                    writer.WriteEndObject();
-                }
+                    {
+                        writer.WritePropertyName(culture.Key); writer.WriteStartObject();
+                        foreach (var pair in culture.Value.OrderBy(x => x.Key, StringComparer.Ordinal))
+                        {
+                            writer.WriteString(pair.Key, pair.Value);
+                        }
+                        writer.WriteEndObject();
+                    }
+            }
             writer.WriteEndObject(); writer.WriteEndObject();
         }
         return Convert.ToHexString(SHA256.HashData(buffer.ToArray())).ToLowerInvariant();
@@ -177,17 +239,30 @@ public sealed class GXLocalizationPublisher(HttpClient client)
 
     static void ValidateSnapshot(GXLocalizationSnapshot snapshot)
     {
-        if (snapshot.SchemaVersion != 2 || snapshot.Packages == null || snapshot.Packages.Count == 0) throw new InvalidDataException("A schema 2 snapshot must contain packages.");
+        if (snapshot.SchemaVersion != 2 || snapshot.Packages == null || snapshot.Packages.Count == 0)
+        {
+            throw new InvalidDataException("A schema 2 snapshot must contain packages.");
+        }
         HashSet<string> identities = new(StringComparer.OrdinalIgnoreCase);
         foreach (var package in snapshot.Packages)
         {
-            if (package == null || package.SchemaVersion != 2) throw new InvalidDataException("Snapshots accept only schema 2 source packages.");
+            if (package == null || package.SchemaVersion != 2)
+            {
+                throw new InvalidDataException("Snapshots accept only schema 2 source packages.");
+            }
             GXLocalizationJson.ValidatePackage(package);
-            if (!identities.Add(package.Owner + "/" + package.Culture)) throw new InvalidDataException("Duplicate owner/culture source registration.");
+            if (!identities.Add(package.Owner + "/" + package.Culture))
+            {
+                throw new InvalidDataException("Duplicate owner/culture source registration.");
+            }
         }
         foreach (var group in snapshot.Packages.GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase))
+        {
             if (group.Select(x => (x.Owner, x.OwnerType, x.DefaultCulture, x.OwnerVersionRange)).Distinct().Count() != 1)
-                throw new InvalidDataException("Source owner casing, type and shared metadata must agree.");
+                {
+                    throw new InvalidDataException("Source owner casing, type and shared metadata must agree.");
+                }
+        }
     }
 
     /// <summary>Plans all sources against the latest committed history without creating files or locks.</summary>
@@ -213,23 +288,38 @@ public sealed class GXLocalizationPublisher(HttpClient client)
         foreach (var package in snapshot.Packages.OrderBy(x => x.Owner, StringComparer.Ordinal).ThenBy(x => x.Culture, StringComparer.Ordinal))
         {
             var item = catalog.Items.SingleOrDefault(x => string.Equals(x.Owner, package.Owner, StringComparison.OrdinalIgnoreCase));
-            if (item != null && (item.Owner != package.Owner || item.OwnerType != package.OwnerType)) throw new InvalidDataException("Published owner identity/type conflict.");
+            if (item != null && (item.Owner != package.Owner || item.OwnerType != package.OwnerType))
+            {
+                throw new InvalidDataException("Published owner identity/type conflict.");
+            }
             var latest = item?.Releases.Where(x => x.Culture == package.Culture).OrderByDescending(x => GXLocalizationJson.Version(x.Version), VersionComparer.VersionRelease).FirstOrDefault();
             string hash = ContentHash(package);
             bool changed = latest == null || latest.ContentSha256 != hash;
             var version = latest == null ? new NuGetVersion(1, 0, 0) : GXLocalizationJson.Version(latest.Version);
-            if (changed && latest != null) version = new NuGetVersion(version.Major, version.Minor, checked(version.Patch + 1));
+            if (changed && latest != null)
+            {
+                version = new NuGetVersion(version.Major, version.Minor, checked(version.Patch + 1));
+            }
             plan.Languages.Add(new(package.Owner, package.Culture!, version.ToNormalizedString(), changed, hash));
             var defaults = snapshot.Packages.FirstOrDefault(x => x.Owner == package.Owner && x.Culture == package.DefaultCulture);
             if (defaults != null)
+            {
                 foreach (string key in defaults.Resources[defaults.Culture!].Keys.Except(package.Resources[package.Culture!].Keys, StringComparer.Ordinal))
-                    plan.Warnings.Add($"{package.Owner}/{package.Culture}: missing default key '{key}'.");
+                    {
+                        plan.Warnings.Add($"{package.Owner}/{package.Culture}: missing default key '{key}'.");
+                    }
+            }
         }
         foreach (var group in snapshot.Packages.GroupBy(x => x.Owner))
         {
             var previous = catalog.Items.SingleOrDefault(x => x.Owner == group.Key);
             foreach (string culture in previous?.Releases.Where(x => x.Culture != null).Select(x => x.Culture!).Distinct() ?? [])
-                if (!group.Any(x => x.Culture == culture)) plan.Warnings.Add($"{group.Key}/{culture}: source removed; published history and installed language retained.");
+            {
+                if (!group.Any(x => x.Culture == culture))
+                    {
+                        plan.Warnings.Add($"{group.Key}/{culture}: source removed; published history and installed language retained.");
+                    }
+            }
         }
         return plan;
     }
@@ -242,7 +332,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
     public async Task<GXLocalizationPublicationPlan> PublishSnapshotAsync(GXLocalizationSnapshot snapshot, string index, CancellationToken token = default)
     {
         ValidateSnapshot(snapshot);
-        if (Uri.TryCreate(index, UriKind.Absolute, out var uri) && !uri.IsFile) throw new ArgumentException("Publication storage must be local. GitHub Pages accepts no uploads.");
+        if (Uri.TryCreate(index, UriKind.Absolute, out var uri) && !uri.IsFile)
+        {
+            throw new ArgumentException("Publication storage must be local. GitHub Pages accepts no uploads.");
+        }
         index = Path.GetFullPath(index);
         string directory = Path.GetDirectoryName(index)!;
         GXLocalizationService.ManagedPath(directory, Path.GetFileName(index));
@@ -251,9 +344,15 @@ public sealed class GXLocalizationPublisher(HttpClient client)
         await using var held = await LockAsync(lockPath, token);
         var catalog = await ReadHistoryAsync(index, token);
         // Validate historical bytes as well as metadata before trusting the change hashes.
-        if (File.Exists(index)) await ValidateStoreAsync(index, token);
+        if (File.Exists(index))
+        {
+            await ValidateStoreAsync(index, token);
+        }
         var plan = BuildPlan(snapshot, catalog);
-        if (!plan.Languages.Any(x => x.Changed)) return plan;
+        if (!plan.Languages.Any(x => x.Changed))
+        {
+            return plan;
+        }
         var files = new List<(string Target, byte[] Bytes)>();
         foreach (var language in plan.Languages.Where(x => x.Changed))
         {
@@ -265,7 +364,9 @@ public sealed class GXLocalizationPublisher(HttpClient client)
             string relative = $"packages/{package.Owner}/{package.Culture}/{package.Version}.json";
             string target = GXLocalizationService.ManagedPath(directory, relative);
             if (File.Exists(target) && !(await File.ReadAllBytesAsync(target, token)).SequenceEqual(bytes))
+            {
                 throw new InvalidDataException($"Immutable package collision: {target}");
+            }
             files.Add((target, bytes));
             var item = catalog.Items.SingleOrDefault(x => x.Owner == package.Owner);
             if (item == null) { item = new() { Owner = package.Owner, OwnerType = package.OwnerType }; catalog.Items.Add(item); }
@@ -281,7 +382,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
             await File.WriteAllBytesAsync(temporary, JsonSerializer.SerializeToUtf8Bytes(catalog, GXLocalizationJson.Options), token);
             foreach (var file in files)
             {
-                if (File.Exists(file.Target)) continue; // exact orphan from interrupted prior attempt
+                if (File.Exists(file.Target))
+                {
+                    continue;
+                } // exact orphan from interrupted prior attempt
                 Directory.CreateDirectory(Path.GetDirectoryName(file.Target)!);
                 string staged = file.Target + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 try { await File.WriteAllBytesAsync(staged, file.Bytes, token); File.Move(staged, file.Target); }
@@ -309,7 +413,10 @@ public sealed class GXLocalizationPublisher(HttpClient client)
     public async Task<GXLocalizationCatalog> PublishLegacyAsync(string packagePath, string index, CancellationToken token = default)
     {
         var package = await service.ReadPackageAsync(packagePath, token);
-        if (package.SchemaVersion != 1) throw new InvalidDataException("Single-culture publications require a source snapshot.");
+        if (package.SchemaVersion != 1)
+        {
+            throw new InvalidDataException("Single-culture publications require a source snapshot.");
+        }
         index = Path.GetFullPath(index);
         string directory = Path.GetDirectoryName(index)!;
         GXLocalizationService.ManagedPath(directory, Path.GetFileName(index));
@@ -319,12 +426,17 @@ public sealed class GXLocalizationPublisher(HttpClient client)
         var catalog = await ReadHistoryAsync(index, token);
         var item = catalog.Items.SingleOrDefault(x => string.Equals(x.Owner, package.Owner, StringComparison.OrdinalIgnoreCase));
         if (item != null && (item.Owner != package.Owner || item.OwnerType != package.OwnerType || item.Releases.Any(x => x.Culture != null)))
+        {
             throw new InvalidOperationException("Localization owner identity/type conflict or owner migrated to language packages.");
+        }
         var previous = item?.Releases.SingleOrDefault(x => VersionComparer.VersionRelease.Equals(GXLocalizationJson.Version(x.Version), GXLocalizationJson.Version(package.Version)));
         if (previous != null)
         {
             byte[] bytes = await File.ReadAllBytesAsync(packagePath, token);
-            if (previous.Size == bytes.Length && previous.Sha256.Equals(Convert.ToHexString(SHA256.HashData(bytes)), StringComparison.OrdinalIgnoreCase)) return catalog;
+            if (previous.Size == bytes.Length && previous.Sha256.Equals(Convert.ToHexString(SHA256.HashData(bytes)), StringComparison.OrdinalIgnoreCase))
+            {
+                return catalog;
+            }
             throw new InvalidOperationException("Published versions are immutable; increase version.");
         }
         return await service.AddAsync(index, packagePath, cancellationToken: token);

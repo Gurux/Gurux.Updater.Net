@@ -45,7 +45,9 @@ public static class GXLocalizationCommand
             ?? throw new InvalidDataException("The update catalog has no localization-index.json asset.");
         var uri = new Uri(asset.DownloadUrl);
         if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
             throw new ArgumentException("Localization catalogs require an HTTP or HTTPS URL.");
+        }
         return uri;
     }
     /// <summary>Lists or installs localization packages using the shared updater options.</summary>
@@ -87,9 +89,18 @@ public static class GXLocalizationCommand
             return;
         }
         List<string> args = ["list", "--catalog-url", options.CatalogUrl.AbsoluteUri];
-        if (options.Product != null) args.AddRange(["--owner", options.Product]);
-        if (options.IncludePrereleases) args.Add("--include-prereleases");
-        if (options.Json) args.Add("--json");
+        if (options.Product != null)
+        {
+            args.AddRange(["--owner", options.Product]);
+        }
+        if (options.IncludePrereleases)
+        {
+            args.Add("--include-prereleases");
+        }
+        if (options.Json)
+        {
+            args.Add("--json");
+        }
         await ExecuteAsync(client, args.ToArray(), output, cancellationToken, diagnostics, asset.DownloadUrl);
     }
 
@@ -97,7 +108,9 @@ public static class GXLocalizationCommand
         bool prereleases, CancellationToken cancellationToken)
     {
         if (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
             return "Up to date: all localization packages in the ZIP match or exceed catalog versions.";
+        }
         var status = await service.StatusAsync(index, path, includePrereleases: prereleases, cancellationToken: cancellationToken);
         return $"Up to date: {status.Owner}{(status.Culture == null ? "" : "/" + status.Culture)}, local {status.LocalVersion}, catalog {status.CatalogVersion}.";
     }
@@ -190,7 +203,9 @@ public static class GXLocalizationCommand
         {
             string path = Required("--package");
             if (new GXCatalogSourceReader(client).GetRemoteUri(path) != null)
+            {
                 throw new ArgumentException("--package must be a local JSON file.");
+            }
             var package = await new GXLocalizationService(client).ReadPackageAsync(path, cancellationToken);
             await output.WriteLineAsync(JsonSerializer.Serialize(new { valid = true }));
             return;
@@ -198,8 +213,13 @@ public static class GXLocalizationCommand
         string address = Optional("--catalog-url") ?? "http://localhost:8000/catalog.json";
         if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
             throw new ArgumentException("--catalog-url requires an HTTP or HTTPS URL.");
-        if (uri.AbsolutePath == "/") uri = new Uri(uri, "catalog.json");
+        }
+        if (uri.AbsolutePath == "/")
+        {
+            uri = new Uri(uri, "catalog.json");
+        }
         string source = resolvedIndex ?? (await ResolveIndexAsync(client, uri, cancellationToken)).AbsoluteUri;
         bool json = Has("--json");
         var settings = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };

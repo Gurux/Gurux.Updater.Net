@@ -68,12 +68,16 @@ public static class GXRegisterModuleCommand
         {
             string key = args[pos];
             if (!allowed.Contains(key) || options.ContainsKey(key))
+            {
                 throw new ArgumentException($"Unknown or duplicate option '{key}'.");
+            }
             string value = "true";
             if (key is not ("--dry-run" or "--json"))
             {
                 if (++pos >= args.Length || args[pos].StartsWith("--", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(args[pos]))
+                {
                     throw new ArgumentException($"Missing value for {key}.");
+                }
                 value = args[pos];
             }
             options.Add(key, value);
@@ -87,9 +91,13 @@ public static class GXRegisterModuleCommand
             catch (InvalidDataException ex) { throw new ArgumentException(ex.Message, ex); }
         }
         if (options.TryGetValue("--id", out var suppliedId))
+        {
             ValidateId(suppliedId);
+        }
         if (options.TryGetValue("--repository", out var suppliedRepository))
+        {
             ValidateRepository(suppliedRepository);
+        }
 
         string modulesRoot = Path.GetFullPath(Required("--modules-root"));
         string catalogRoot = Path.GetFullPath(Required("--catalog-root"));
@@ -99,37 +107,57 @@ public static class GXRegisterModuleCommand
         string relativeProject = Path.GetRelativePath(modulesRoot, project).Replace('\\', '/');
         if (relativeProject.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(relativeProject) ||
             !relativeProject.Contains('/') || !project.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
             throw new InvalidDataException("Project must be a .csproj in a subdirectory of --modules-root.");
+        }
         foreach (string path in new[] { project, modulesPath, catalogPath })
+        {
             CheckRegularPath(path);
+        }
 
         byte[] originalModules = await File.ReadAllBytesAsync(modulesPath, cancellationToken);
         byte[] originalCatalog = await File.ReadAllBytesAsync(catalogPath, cancellationToken);
         var modules = ReadRegistry(originalModules);
         var catalog = ReadRegistry(originalCatalog);
         if (modules["modules"] is not JsonObject entries || catalog["items"] is not JsonArray items)
+        {
             throw new InvalidDataException("Expected modules.json modules object and catalog-sources.json items array.");
+        }
         var moduleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
+        {
             if (!moduleIds.Add(entry.Key) || entry.Value is not JsonObject)
-                throw new InvalidDataException("Duplicate module ID or invalid module entry.");
+                {
+                    throw new InvalidDataException("Duplicate module ID or invalid module entry.");
+                }
+        }
         var catalogIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in items)
+        {
             if (item is not JsonObject obj || obj["id"] is not JsonValue idValue ||
-                !idValue.TryGetValue<string>(out string? itemId) || string.IsNullOrWhiteSpace(itemId) || !catalogIds.Add(itemId))
-                throw new InvalidDataException("Duplicate catalog ID or invalid catalog entry.");
+                    !idValue.TryGetValue<string>(out string? itemId) || string.IsNullOrWhiteSpace(itemId) || !catalogIds.Add(itemId))
+                {
+                    throw new InvalidDataException("Duplicate catalog ID or invalid catalog entry.");
+                }
+        }
 
         var properties = await EvaluateAsync(project, cancellationToken);
         string Get(string key) => properties.GetProperty(key).GetString() ?? string.Empty;
         if (!Get("AmiModuleCompatibilityMetadata").Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
             throw new InvalidDataException("Set <AmiModuleCompatibilityMetadata>true</AmiModuleCompatibilityMetadata> in the project or its imported properties before registration.");
+        }
         if (Get("TargetFramework") != "net10.0")
+        {
             throw new InvalidDataException("Module releases require TargetFramework net10.0.");
+        }
         string packageId = string.IsNullOrWhiteSpace(Get("PackageId")) ? Get("AssemblyName") : Get("PackageId");
         string id = options.GetValueOrDefault("--id") ?? packageId;
         ValidateId(id);
         if (id != packageId)
+        {
             throw new InvalidDataException("--id must match the evaluated PackageId: release ZIP and compatibility filenames use PackageId.");
+        }
         await ValidateTargetsAsync(project, cancellationToken);
         string repository = options.GetValueOrDefault("--repository") ?? RepositoryFromUrl(Get("RepositoryUrl"));
         ValidateRepository(repository);
@@ -137,16 +165,22 @@ public static class GXRegisterModuleCommand
         string? matchingModule = entries.Select(e => e.Key).FirstOrDefault(key => key.Equals(id, StringComparison.OrdinalIgnoreCase));
         JsonObject? module = matchingModule is null ? null : (JsonObject)entries[matchingModule]!;
         if (matchingModule is not null && matchingModule != id)
+        {
             throw new InvalidDataException("A module ID differing only in case already exists.");
+        }
         foreach (var entry in entries)
         {
             string? existingPath = Text(entry.Value!["project"]);
             if (entry.Key != id && existingPath is not null &&
                 Path.GetFullPath(Path.Combine(modulesRoot, existingPath)).Equals(project, PathComparison))
+            {
                 throw new InvalidDataException($"Project is already registered as '{entry.Key}'.");
+            }
         }
         if (module is not null && Text(module["project"]) != relativeProject)
+        {
             throw new InvalidDataException($"Module '{id}' is already registered to a different project.");
+        }
         var existingItem = items.OfType<JsonObject>().SingleOrDefault(i => Text(i["id"])!.Equals(id, StringComparison.OrdinalIgnoreCase));
         if (existingItem is not null)
         {
@@ -158,10 +192,16 @@ public static class GXRegisterModuleCommand
                 ["tagPrefix"] = id + "/v",
                 ["assetPattern"] = id + "-*.zip"
             })
+            {
                 if (existingItem[pair.Key] is not null && Text(existingItem[pair.Key]) != pair.Value)
-                    throw new InvalidDataException($"Existing catalog entry '{id}' conflicts on '{pair.Key}'.");
+                    {
+                        throw new InvalidDataException($"Existing catalog entry '{id}' conflicts on '{pair.Key}'.");
+                    }
+            }
             if (existingItem["compatibilityMetadata"] is not null && existingItem["compatibilityMetadata"]!.GetValue<bool>() != true)
+            {
                 throw new InvalidDataException("Existing catalog entry has compatibilityMetadata disabled.");
+            }
         }
         if (module is null)
         {
@@ -169,16 +209,28 @@ public static class GXRegisterModuleCommand
             entries.Add(id, module);
         }
         if (module["changelogPaths"] is null)
+        {
             module["changelogPaths"] = new JsonArray();
+        }
         if (module["changelogPaths"] is not JsonArray changelog)
+        {
             throw new InvalidDataException("Module changelogPaths must be an array of repository-relative paths.");
+        }
         var paths = changelog.Select(n => Text(n) ?? throw new InvalidDataException("Invalid changelog path.")).ToHashSet(StringComparer.Ordinal);
         foreach (string path in paths)
+        {
             if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || path.Replace('\\', '/').Split('/').Any(p => p is "." or ".."))
-                throw new InvalidDataException("Module changelogPaths must be repository-relative paths.");
+                {
+                    throw new InvalidDataException("Module changelogPaths must be repository-relative paths.");
+                }
+        }
         foreach (string path in new[] { projectDirectory, "Directory.Build.props", "Directory.Build.targets", "NuGet.Config", "scripts/Gurux.AMI.Module.Metadata" })
+        {
             if (paths.Add(path))
-                changelog.Add(path);
+                {
+                    changelog.Add(path);
+                }
+        }
         if (existingItem is null)
         {
             existingItem = new JsonObject
@@ -210,17 +262,25 @@ public static class GXRegisterModuleCommand
         {
             string option = pair.Key == "maintenanceStatus" ? "--maintenance-status" : "--" + pair.Key;
             if (options.TryGetValue(option, out string? value))
+            {
                 existingItem[pair.Key] = value;
+            }
             else if (existingItem[pair.Key] is null && pair.Value.Length != 0)
+            {
                 existingItem[pair.Key] = pair.Value;
+            }
         }
         ConfigureIcon(options, existingItem, project, modulesRoot, id);
         var files = new[] { new RegistryFile(modulesPath, originalModules, modules), new RegistryFile(catalogPath, originalCatalog, catalog) };
         bool dryRun = options.ContainsKey("--dry-run");
         if (!dryRun)
+        {
             await WriteRegistriesAsync(files, cancellationToken);
+        }
         if (options.ContainsKey("--json"))
+        {
             await output.WriteLineAsync(JsonSerializer.Serialize(new { id, dryRun, files = files.Select(f => new { path = f.Path, changed = f.Changed, content = f.Content }) }, JsonOptions));
+        }
         else
         {
             await output.WriteLineAsync($"{(dryRun ? "Registration preview" : "Registered")}: {id}");
@@ -228,7 +288,9 @@ public static class GXRegisterModuleCommand
             {
                 await output.WriteLineAsync($"{(file.Changed ? dryRun ? "Would update" : "Updated" : "Unchanged")}: {file.Path}");
                 if (dryRun && file.Changed)
+                {
                     await output.WriteLineAsync(file.Content.ToJsonString(JsonOptions));
+                }
             }
         }
     }
@@ -242,22 +304,34 @@ public static class GXRegisterModuleCommand
         if (icon is null)
         {
             if (item["iconPath"] is not null || item["iconUrl"] is not null)
+            {
                 return;
+            }
             string assets = Path.Combine(directory, "assets");
             if (!Directory.Exists(assets))
+            {
                 return;
+            }
             var candidates = Directory.GetFiles(assets).Where(p => extensions.Contains(Path.GetExtension(p).ToLowerInvariant())).ToArray();
             if (candidates.Length == 0)
+            {
                 return;
+            }
             if (candidates.Length > 1)
+            {
                 throw new InvalidDataException("Multiple module images found; use --icon <project-relative-path> to select the catalog icon.");
+            }
             icon = Path.GetRelativePath(directory, candidates[0]);
         }
         if (Path.IsPathRooted(icon) || icon.Replace('\\', '/').Split('/').Any(p => p is ".." or "."))
+        {
             throw new InvalidDataException("--icon must be a relative path inside the module project directory.");
+        }
         string full = Path.GetFullPath(Path.Combine(directory, icon));
         if (!extensions.Contains(Path.GetExtension(full).ToLowerInvariant()))
+        {
             throw new InvalidDataException("Unsupported module icon extension.");
+        }
         CheckRegularPath(full);
         item["iconPath"] = Path.GetRelativePath(modulesRoot, full).Replace('\\', '/');
         item["iconUrl"] = "https://gurux.github.io/Gurux.AMI.Catalog/assets/" + Uri.EscapeDataString(id) + "/" + Uri.EscapeDataString(Path.GetFileName(full));
@@ -267,30 +341,44 @@ public static class GXRegisterModuleCommand
     private static void ValidateId(string id)
     {
         if (id.Length > 150 || !Regex.IsMatch(id, @"^Gurux\.AMI\.[A-Za-z0-9]+(?:[_.-][A-Za-z0-9]+)*$"))
+        {
             throw new ArgumentException("Module ID must be a Gurux.AMI.* identifier.");
+        }
     }
     private static void ValidateRepository(string repository)
     {
         if (!Regex.IsMatch(repository, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$") || repository.Split('/').Any(p => p is "." or ".."))
+        {
             throw new ArgumentException("--repository must be owner/repository.");
+        }
     }
     private static string RepositoryFromUrl(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
+        {
             return "Gurux/Gurux.AMI.Modules";
+        }
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "github.com" ||
             uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.UserInfo.Length != 0)
+        {
             throw new InvalidDataException("RepositoryUrl must be an HTTPS GitHub repository URL, or provide --repository owner/repository.");
+        }
         string path = uri.AbsolutePath.Trim('/');
         return path.EndsWith(".git", StringComparison.Ordinal) ? path[..^4] : path;
     }
     private static void CheckRegularPath(string path)
     {
         if (!File.Exists(path))
+        {
             throw new InvalidDataException($"Required file does not exist: {path}");
+        }
         for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
+        {
             if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException($"Symlinks and reparse points are not supported: {current}");
+                {
+                    throw new InvalidDataException($"Symlinks and reparse points are not supported: {current}");
+                }
+        }
     }
     private static JsonObject ReadRegistry(byte[] bytes)
     {
@@ -311,13 +399,19 @@ public static class GXRegisterModuleCommand
             foreach (var property in element.EnumerateObject())
             {
                 if (!names.Add(property.Name))
+                {
                     throw new InvalidDataException($"Duplicate JSON property '{property.Name}'.");
+                }
                 CheckDuplicates(property.Value);
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
+        {
             foreach (var item in element.EnumerateArray())
-                CheckDuplicates(item);
+                {
+                    CheckDuplicates(item);
+                }
+        }
     }
     private static async Task<JsonElement> EvaluateAsync(string project, CancellationToken cancellationToken)
     {
@@ -334,8 +428,12 @@ public static class GXRegisterModuleCommand
         var targets = document.Descendants().Where(e => e.Name.LocalName == "Target")
             .Select(e => (string?)e.Attribute("Name")).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (string target in new[] { "ZipPublish", "AmiWriteCompatibilityMetadata" })
+        {
             if (!targets.Contains(target))
-                throw new InvalidDataException($"Module project must define or import the '{target}' release target before registration.");
+                {
+                    throw new InvalidDataException($"Module project must define or import the '{target}' release target before registration.");
+                }
+        }
     }
     private static async Task<string> RunMsBuildAsync(string project, string query, CancellationToken cancellationToken)
     {
@@ -348,15 +446,22 @@ public static class GXRegisterModuleCommand
             WorkingDirectory = Path.GetDirectoryName(project)
         };
         foreach (string arg in new[] { "msbuild", project, "-nologo", "-verbosity:quiet", "-p:Configuration=Release", query })
+        {
             start.ArgumentList.Add(arg);
+        }
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start dotnet msbuild.");
-        using var registration = cancellationToken.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
+        using var registration = cancellationToken.Register(() => { try { if (!process.HasExited)
+        {
+            process.Kill(true);
+        } } catch (InvalidOperationException) { } });
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
         string text = await stdout, error = await stderr;
         if (process.ExitCode != 0)
+        {
             throw new InvalidDataException($"MSBuild project evaluation failed: {error}{text}");
+        }
         return text;
     }
     private sealed record RegistryFile(string Path, byte[] Original, JsonObject Content)
@@ -376,8 +481,12 @@ public static class GXRegisterModuleCommand
                 await File.WriteAllTextAsync(temporary, file.Content.ToJsonString(JsonOptions) + "\n", new UTF8Encoding(false), cancellationToken);
             }
             foreach (var file in files)
+            {
                 if (!(await File.ReadAllBytesAsync(file.Path, cancellationToken)).AsSpan().SequenceEqual(file.Original))
-                    throw new IOException($"Registry changed during registration: {file.Path}. Retry the command.");
+                    {
+                        throw new IOException($"Registry changed during registration: {file.Path}. Retry the command.");
+                    }
+            }
             cancellationToken.ThrowIfCancellationRequested();
             foreach (var item in staged)
             {
@@ -388,16 +497,20 @@ public static class GXRegisterModuleCommand
         catch
         {
             foreach (var item in staged.Take(committed))
+            {
                 File.WriteAllBytes(item.File.Path, item.File.Original);
+            }
             throw;
         }
         finally
         {
             foreach (var item in staged)
+            {
                 try
-                { File.Delete(item.Temporary); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
+                    { File.Delete(item.Temporary); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+            }
         }
     }
 }

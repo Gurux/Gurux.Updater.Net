@@ -131,7 +131,9 @@ public static class GXCatalogPackageReader
         if (mains.Count != 1)
         {
             if (product is not null && productType is not null && productVersion is not null)
+            {
                 return ApplyOverrides(zip, new GXCatalogPackageInfo { Name = product }, product, productType, productVersion);
+            }
             throw new InvalidDataException("ZIP does not identify one deployable .NET application or module. Include its main .deps.json or .runtimeconfig.json metadata.");
         }
 
@@ -154,9 +156,18 @@ public static class GXCatalogPackageReader
     private static GXCatalogPackageInfo ApplyOverrides(ZipArchive zip, GXCatalogPackageInfo package,
         string? product, CatalogProductType? productType, string? productVersion)
     {
-        if (product is not null) package.Id = product;
-        if (productType is not null) package.Type = productType.Value;
-        if (productVersion is not null) package.Version = productVersion;
+        if (product is not null)
+        {
+            package.Id = product;
+        }
+        if (productType is not null)
+        {
+            package.Type = productType.Value;
+        }
+        if (productVersion is not null)
+        {
+            package.Version = productVersion;
+        }
         package.IsPrerelease = package.Version.Split('+')[0].Contains('-');
         return ReadDeclaredCompatibility(zip, package);
     }
@@ -164,16 +175,23 @@ public static class GXCatalogPackageReader
     private static GXCatalogPackageInfo ReadDeclaredCompatibility(ZipArchive zip, GXCatalogPackageInfo package)
     {
         var entries = zip.Entries.Where(x => x.FullName == "module.compatibility.json").ToArray();
-        if (entries.Length == 0) return package;
+        if (entries.Length == 0)
+        {
+            return package;
+        }
         if (entries.Length != 1 || entries[0].Length > 64 * 1024)
+        {
             throw new InvalidDataException("Invalid module compatibility sidecar.");
+        }
         using var input = entries[0].Open();
         using var metadata = JsonDocument.Parse(input);
         var root = metadata.RootElement;
         if (root.GetProperty("schemaVersion").GetInt32() != 1 ||
             root.GetProperty("id").GetString() != package.Id ||
             root.GetProperty("version").GetString()?.Split('+')[0] != package.Version.Split('+')[0])
+        {
             throw new InvalidDataException("Module compatibility sidecar identity/version mismatch.");
+        }
         if (root.TryGetProperty("amiVersionRange", out var range))
         {
             package.AmiVersionRange = range.GetString() ?? throw new InvalidDataException("Invalid amiVersionRange.");
@@ -189,13 +207,18 @@ public static class GXCatalogPackageReader
         List<GXAssemblyReference> references = [];
         while (pending.TryDequeue(out var current))
         {
-            if (!visited.Add(current.Path)) continue;
+            if (!visited.Add(current.Path))
+            {
+                continue;
+            }
             references.AddRange(current.References);
             foreach (var reference in current.References)
             {
                 foreach (var bundled in assemblies.Where(x => string.Equals(x.Name + ".dll", reference.Name, StringComparison.OrdinalIgnoreCase)
                     && x.AssemblyVersion == reference.Version))
+                {
                     pending.Enqueue(bundled);
+                }
             }
         }
         return references.DistinctBy(x => (x.Name, x.Version))

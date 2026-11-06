@@ -332,7 +332,9 @@ public sealed class GXUpdaterOptions
         {
             if (result.Command != "check" || result.ListLocalization || result.Localization is not null ||
                 result.ListManufacturerSettings || result.LocalPackage is not null || result.PublishPackage is not null || result.CurrentVersion is not null)
+            {
                 throw new ArgumentException("Product filters are supported by catalog listing only.");
+            }
             try
             {
                 GXCatalogMetadata.ValidateClassification(result.MaintenanceStatus, "maintenanceStatus");
@@ -344,11 +346,15 @@ public sealed class GXUpdaterOptions
         if (result.AmiVersion is not null && (result.Command != "check" || result.Product is null || result.CurrentVersion is null ||
             !NuGet.Versioning.NuGetVersion.TryParse(result.AmiVersion, out _) || result.ListLocalization || result.ListManufacturerSettings ||
             result.Localization is not null || result.PublishPackage is not null || result.LocalPackage is not null))
+        {
             throw new ArgumentException("--ami-version requires a catalog check with --product and --current-version and a valid version.");
+        }
 
         if (result.CurrentVersion != null && (result.Command != "check" || result.ListLocalization ||
             result.Localization != null || result.ListManufacturerSettings || result.LocalPackage != null || result.PublishPackage != null))
+        {
             throw new ArgumentException("--current-version is supported by catalog product checks only.");
+        }
 
         if (result.ListLocalization || result.Localization != null)
         {
@@ -479,12 +485,16 @@ public sealed class GXUpdaterOptions
             }
 
             if (result.CurrentVersion != null && (string.IsNullOrWhiteSpace(result.CurrentVersion) || result.Product == null || result.ListReleases))
+            {
                 throw new ArgumentException("--current-version requires --product and cannot be combined with --list-releases.");
+            }
             result.ListCatalog = true;
             return result;
         }
         if (result.CurrentVersion != null)
+        {
             throw new ArgumentException("--current-version is supported by catalog product checks only.");
+        }
         if (result.Command == "update" && result.ListReleases)
         {
             throw new ArgumentException("--list-releases is supported by the check command only.");

@@ -59,15 +59,33 @@ public sealed class GXLocalizationPackageConverter : JsonConverter<GXLocalizatio
         writer.WriteStartObject();
         writer.WriteNumber("schemaVersion", value.SchemaVersion);
         writer.WriteString("owner", value.Owner); writer.WriteString("ownerType", value.OwnerType);
-        if (value.Culture != null) writer.WriteString("culture", value.Culture);
+        if (value.Culture != null)
+        {
+            writer.WriteString("culture", value.Culture);
+        }
         writer.WriteString("version", value.Version);
-        if (value.OwnerVersionRange != null) writer.WriteString("ownerVersionRange", value.OwnerVersionRange);
+        if (value.OwnerVersionRange != null)
+        {
+            writer.WriteString("ownerVersionRange", value.OwnerVersionRange);
+        }
         writer.WriteString("defaultCulture", value.DefaultCulture);
-        if (value.Description != null) writer.WriteString("description", value.Description);
-        if (value.ReleaseNotes != null) writer.WriteString("releaseNotes", value.ReleaseNotes);
+        if (value.Description != null)
+        {
+            writer.WriteString("description", value.Description);
+        }
+        if (value.ReleaseNotes != null)
+        {
+            writer.WriteString("releaseNotes", value.ReleaseNotes);
+        }
         writer.WritePropertyName("resources");
-        if (value.SchemaVersion == 2) JsonSerializer.Serialize(writer, value.Resources[value.Culture!], options);
-        else JsonSerializer.Serialize(writer, value.Resources, options);
+        if (value.SchemaVersion == 2)
+        {
+            JsonSerializer.Serialize(writer, value.Resources[value.Culture!], options);
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, value.Resources, options);
+        }
         writer.WriteEndObject();
     }
 }

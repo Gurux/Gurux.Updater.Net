@@ -41,7 +41,9 @@ public sealed class GXDeploymentQueue(string root)
     public static void ValidateVersion(string version)
     {
         if (version.Length > 80 || !Regex.IsMatch(version, @"\A\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?\z"))
+        {
             throw new ArgumentException("A numeric release version is required.", nameof(version));
+        }
     }
     /// <summary>Publishes one version-only request with a fresh internal transaction ID.</summary>
     public async Task EnqueueAsync(string version, CancellationToken token = default)
@@ -51,7 +53,9 @@ public sealed class GXDeploymentQueue(string root)
         // A separate publication lock keeps readers from seeing partially written JSON.
         using var gate = new FileStream(Path.Combine(Root, "queue", "queue.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         if (File.Exists(Path.Combine(Root, "queue", "request.json")))
+        {
             throw new IOException("An update is already queued or running.");
+        }
         await WriteAtomicAsync("queue/request.json", new GXDeploymentRequest(version, Guid.NewGuid().ToString("N")), token);
     }
     /// <summary>Reads the atomically published pending request.</summary>
@@ -63,7 +67,10 @@ public sealed class GXDeploymentQueue(string root)
     { status.UpdatedAt = DateTimeOffset.UtcNow; return PersistStatusAsync(status, token); }
     async Task PersistStatusAsync(GXDeploymentStatus status, CancellationToken token)
     {
-        if (status.RequestId is not null && !Regex.IsMatch(status.RequestId, @"\A[A-Za-z0-9_-]{1,80}\z")) throw new InvalidDataException("Invalid transaction ID.");
+        if (status.RequestId is not null && !Regex.IsMatch(status.RequestId, @"\A[A-Za-z0-9_-]{1,80}\z"))
+        {
+            throw new InvalidDataException("Invalid transaction ID.");
+        }
         await WriteAtomicAsync("status.json", status, token);
         if (status.RequestId is not null)
         {
@@ -78,7 +85,10 @@ public sealed class GXDeploymentQueue(string root)
         if (File.Exists(path))
         {
             var request = JsonSerializer.Deserialize<GXDeploymentRequest>(File.ReadAllText(path), Json);
-            if (Guid.TryParseExact(request?.RequestId, "N", out _)) File.Delete(Path.Combine(Root, "queue", request!.RequestId + ".ready"));
+            if (Guid.TryParseExact(request?.RequestId, "N", out _))
+            {
+                File.Delete(Path.Combine(Root, "queue", request!.RequestId + ".ready"));
+            }
         }
         File.Delete(path);
     }

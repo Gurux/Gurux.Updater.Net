@@ -49,14 +49,20 @@ public static class GXCatalogCommand
                 AmiVersion = options.AmiVersion
             }, options.IncludePrereleases, cancellationToken);
         if (options.Json)
+        {
             await output.WriteLineAsync(JsonSerializer.Serialize(info, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+        }
         else
         {
             await output.WriteLineAsync(GXUpdateText.Status(info));
             if (info.UpdateAvailable)
+            {
                 await output.WriteLineAsync($"{info.CurrentVersion} -> {info.LatestVersion}");
+            }
             if (info.Error is not null)
+            {
                 await output.WriteLineAsync(info.Error);
+            }
         }
         return info.Status == GXUpdateStatus.CheckFailed ? 1 : info.UpdateAvailable ? 10 : 0;
     }
@@ -127,7 +133,9 @@ public static class GXCatalogCommand
             foreach (var release in item.Releases)
             {
                 if (release.AmiVersionRange is not null)
+                {
                     await output.WriteLineAsync($"  Works with AMI: {release.AmiVersionRange}");
+                }
                 await output.WriteLineAsync($"  {release.Version}{(release.IsPrerelease ? " (prerelease)" : "")} — {GXUpdateText.Priority(release.Priority, release.IsSecurityUpdate)}{(release.IsRevoked ? " — release revoked" : release.IsUnsupported ? " — no longer supported" : "")}");
                 List<GXUpdateAsset> assets = options.AssetPattern == null ? release.Assets :
                     release.Asset == null ? [] : [release.Asset];

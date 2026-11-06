@@ -42,19 +42,25 @@ public static class GXCatalogMetadata
     {
         if (value is not null && (value.Length > 100 || !Regex.IsMatch(value, @"\A[a-z][a-z0-9]*(?:-[a-z0-9]+)*\z") ||
             field == "maintenanceStatus" && !MaintenanceStatuses.Contains(value)))
+        {
             throw new InvalidDataException($"Invalid {field}.");
+        }
     }
 
     /// <summary>Validates a NuGet AMI range, rejecting floating and empty intervals.</summary>
     public static void ValidateAmiVersionRange(string? value)
     {
         if (value is null)
+        {
             return;
+        }
         if (value.Length > 200 || !VersionRange.TryParse(value, out var range) || value != "*" && range.IsFloating ||
             range.MinVersion is not null && range.MaxVersion is not null &&
             (VersionComparer.VersionRelease.Compare(range.MinVersion, range.MaxVersion) > 0 ||
              VersionComparer.VersionRelease.Equals(range.MinVersion, range.MaxVersion) && !(range.IsMinInclusive && range.IsMaxInclusive)))
+        {
             throw new InvalidDataException("Invalid amiVersionRange.");
+        }
     }
 
     /// <summary>Checks a supplied AMI version against a release's declared range; null means unknown.</summary>
@@ -62,9 +68,13 @@ public static class GXCatalogMetadata
     {
         ValidateAmiVersionRange(release.AmiVersionRange);
         if (release.AmiVersionRange is null || amiVersion is null)
+        {
             return null;
+        }
         if (!NuGetVersion.TryParse(amiVersion, out var version))
+        {
             throw new InvalidDataException("Invalid AMI version.");
+        }
         return VersionRange.Parse(release.AmiVersionRange).Satisfies(version);
     }
 }

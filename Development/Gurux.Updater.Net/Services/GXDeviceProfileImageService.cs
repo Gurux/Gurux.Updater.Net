@@ -94,7 +94,9 @@ public sealed class GXDeviceProfileImageService(HttpClient client)
     {
         await using var stream = File.OpenRead(path);
         if (stream.Length != image.Size)
+        {
             return false;
+        }
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return Convert.ToHexString(hash).Equals(image.Sha256, StringComparison.OrdinalIgnoreCase);
     }

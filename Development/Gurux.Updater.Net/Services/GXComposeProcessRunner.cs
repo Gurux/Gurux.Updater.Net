@@ -46,7 +46,9 @@ public sealed class GXComposeProcessRunner(string workingDirectory, int timeoutS
         timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         var start = new ProcessStartInfo("docker") { WorkingDirectory = workingDirectory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
         foreach (string argument in arguments)
+        {
             start.ArgumentList.Add(argument);
+        }
         using var process = Process.Start(start) ?? throw new IOException("Docker could not be started.");
         var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
         var error = process.StandardError.ReadToEndAsync(timeout.Token);
@@ -57,13 +59,17 @@ public sealed class GXComposeProcessRunner(string workingDirectory, int timeoutS
             _ = await error;
             // Do not return effective environment/configuration or credentials as browser-visible errors.
             if (process.ExitCode != 0)
+            {
                 throw new IOException($"Docker {arguments[0]} failed (exit {process.ExitCode}). See host Docker logs.");
+            }
             return result;
         }
         catch
         {
             if (!process.HasExited)
+            {
                 process.Kill(entireProcessTree: true);
+            }
             try
             { await Task.WhenAll(output, error); }
             catch { }

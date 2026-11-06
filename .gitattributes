@@ -5,3 +5,4 @@
 *.cs export-subst
 *.py export-subst
 *.sh export-subst
+*.bat export-subst
