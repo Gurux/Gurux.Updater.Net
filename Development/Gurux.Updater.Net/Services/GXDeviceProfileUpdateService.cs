@@ -107,6 +107,7 @@ public sealed class GXDeviceProfileUpdateService
     public IReadOnlyList<GXDeviceProfileEntry> GetProfiles(GXDeviceProfileIndex index)
     {
         ArgumentNullException.ThrowIfNull(index);
+        ValidateIndex(index);
         return EnumerateEntries(index).ToArray();
     }
 
@@ -294,7 +295,7 @@ public sealed class GXDeviceProfileUpdateService
 
     private static void ValidateIndex(GXDeviceProfileIndex index)
     {
-        if (index.SchemaVersion is not (1 or 2))
+        if (index.SchemaVersion is not (1 or 2 or 3))
         {
             throw new InvalidDataException(
                 $"Unsupported device profile index schema version '{index.SchemaVersion}'.");
@@ -303,6 +304,10 @@ public sealed class GXDeviceProfileUpdateService
         HashSet<string> ids = new(StringComparer.Ordinal);
         foreach (GXDeviceProfileEntry entry in EnumerateEntries(index))
         {
+            if (index.SchemaVersion == 3)
+            {
+                ValidateConnections(entry);
+            }
             if (string.IsNullOrWhiteSpace(entry.Id))
             {
                 throw new InvalidDataException("Device profile entry ID is required.");
@@ -330,6 +335,29 @@ public sealed class GXDeviceProfileUpdateService
         }
     }
 
+    private static void ValidateConnections(GXDeviceProfileEntry entry)
+    {
+        if (entry.Profiles is null || entry.Profiles.Count == 0)
+        {
+            throw new InvalidDataException($"Profile '{entry.Id}' requires communication Profiles.");
+        }
+        HashSet<(int, int, int, int)> connections = [];
+        foreach (GXCommunicationProfile profile in entry.Profiles)
+        {
+            // Matches the InterfaceType enum used by the DeviceProfiles generator.
+            if (profile is null || profile.InterfaceType is < 0 or > 13 ||
+                profile.ClientAddress < 0 || profile.ClientAddress > (profile.InterfaceType == 1 ? 65535 : 127) ||
+                profile.PhysicalAddress is < 0 or > 16383 || profile.LogicalAddress is < 0 or > 16383)
+            {
+                throw new InvalidDataException($"Profile '{entry.Id}' has invalid communication settings.");
+            }
+            if (!connections.Add((profile.InterfaceType, profile.ClientAddress, profile.PhysicalAddress, profile.LogicalAddress)))
+            {
+                throw new InvalidDataException($"Profile '{entry.Id}' has duplicate communication settings.");
+            }
+        }
+    }
+
     /// <summary>
     /// Enumerates all profile entries from both model-level and version-level settings.
     /// Model-level entries and version-specific entries are independent: no merging occurs.
@@ -343,6 +371,14 @@ public sealed class GXDeviceProfileUpdateService
                 if (index.SchemaVersion == 2)
                 {
                     foreach (GXDeviceProfileEntry entry in model.Interfaces.SelectMany(i => i.Versions).SelectMany(v => v.Settings))
+                    {
+                        yield return entry;
+                    }
+                    continue;
+                }
+                if (index.SchemaVersion == 3)
+                {
+                    foreach (GXDeviceProfileEntry entry in model.Versions.SelectMany(v => v.Settings))
                     {
                         yield return entry;
                     }

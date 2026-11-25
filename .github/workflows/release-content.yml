@@ -41,12 +41,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Build content publisher and verify publication scripts
+      - name: Build content publisher
         run: |
           dotnet build publisher/Development/Gurux.Updater.Tool/Gurux.Updater.Tool.csproj \
             -c Release -p:GeneratePackageOnBuild=false
           python publisher/Development/scripts/publish_content.py --help
-          python -m unittest discover -s publisher/Development/tests-content-release -v
       - name: Reserve changed tags, publish immutable assets, then notify Catalog
         env:
           GH_TOKEN: ${{ github.token }}

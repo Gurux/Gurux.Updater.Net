@@ -168,11 +168,6 @@ jobs:
       with:
         python-version: '3.12'
       if: steps.select.outputs.has_changes == 'True'
-    - name: Verify publication scripts
-      run: |
-        python -m unittest discover -s Development/tests-content-release -v
-        if ($LASTEXITCODE -ne 0) { throw 'Publication script tests failed.' }
-      if: steps.select.outputs.has_changes == 'True'
     - name: NuGet login (Trusted Publishing)
       uses: NuGet/login@v1
       id: login

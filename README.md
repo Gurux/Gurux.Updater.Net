@@ -101,6 +101,56 @@ With that option, `--catalog-url` also accepts an update catalog containing
 `Gurux.DLMS.DeviceProfiles`; the tool follows the latest stable release's
 `manufacturers.json` asset to list the settings.
 
+Manufacturers can include an optional FLAG identifier, for example
+`"Id": "EDM"` with `"Name": "EDMI"`. Use `GXDeviceProfileManufacturer.Id`
+for manufacturer matching and `Name` for display. Older indexes omit `Id`
+and the library returns null; applications should handle that case explicitly.
+CLI JSON rows include `manufacturerId` when present and retain `manufacturer`
+as the display name. Text listings show `EDMI (EDM)` when an ID is available.
+
+Filter the listing by FLAG ID (case insensitive) with:
+
+```shell
+Gurux.Updater.Tool.exe check --list-manufacturer-settings --manufacturer-id EDM --json
+```
+
+The filter requires a three-letter ASCII identifier and an index containing
+manufacturer `Id` fields. Manufacturers without an `Id` are excluded when
+filtering; no matches produce an empty list.
+
+Preserve profile IDs when moving
+profiles into FLAG ID directories so installed profiles remain identifiable.
+
+Schema 3 removes the required interface level. Its hierarchy is
+`Manufacturers -> Models -> Versions -> Settings`; each setting contains a
+nonempty `Profiles` list of `Gurux.Updater.Model.GXCommunicationProfile` values
+(`InterfaceType`, `ClientAddress`, `PhysicalAddress`, `LogicalAddress`).
+An empty version name represents the model default. Named object-model variants
+remain independent and are never merged with defaults.
+
+```csharp
+var index = await profiles.GetIndexAsync();
+var model = index.Manufacturers.Single(m => m.Id == "EDM")
+    .Models.Single(m => m.Name == "Mk7MI");
+var setting = model.Versions.Single(v => v.Name == "").Settings.First();
+var connection = setting.Profiles.First(p => p.InterfaceType == 4);
+await profiles.DownloadProfileAsync(setting, "meter.gxc");
+// Import meter.gxc, then apply connection.InterfaceType, ClientAddress,
+// PhysicalAddress and LogicalAddress to the host application's connection settings.
+```
+
+The Updater communication DTO mirrors the AMI DTO without taking an AMI dependency.
+Downloading preserves the file bytes and its default connection; the host applies
+the selected connection after import. Only advertise alternatives tested against
+the same authentication and object model. CLI JSON emits one row per setting with
+a `profiles` array for schema 3 and omits the legacy `interface` field; text output
+lists numeric interface types. Legacy CLI JSON retains its existing interface
+field and omits profiles. The manufacturer ID filter works with all schemas.
+
+Publish schema 3 only after consumers have been upgraded; older Updater versions
+reject it. Existing schema 1/2 indexes continue to load. Their entry Profiles lists
+remain empty because communication settings belong to the legacy interface/file.
+
 Manufacturer logos and model images are optional. In DeviceProfiles, add
 `<manufacturer>/logo.png` and `<manufacturer>/<model>/image.png`. The generated
 index includes an `Image` object containing `Location`, `Sha256` and `Size` at
@@ -112,14 +162,14 @@ Gurux.Updater.Tool.exe check --list-manufacturer-settings --json
 ```
 
 JSON rows include optional `manufacturerImage` and `modelImage` objects. Listing
-does not download image files. The library reads schema 1 and schema 2 indexes;
+does not download image files. The library and CLI read schema 1, 2, and 3 indexes;
 use `GXDeviceProfileImageService` to fetch an image when it is needed:
 
 ```csharp
 using var http = new HttpClient();
 var profiles = new GXDeviceProfileUpdateService(http);
 var index = await profiles.GetIndexAsync();
-var manufacturer = index.Manufacturers.First();
+var manufacturer = index.Manufacturers.First(m => m.Id == "EDM");
 if (manufacturer.Image is { } image)
 {
     string path = await new GXDeviceProfileImageService(http)

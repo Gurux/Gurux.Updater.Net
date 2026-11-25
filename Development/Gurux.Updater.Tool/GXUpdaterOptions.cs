@@ -101,6 +101,9 @@ public sealed class GXUpdaterOptions
     public bool ListReleases { get; private set; }
     /// <summary>List available manufacturer settings from the DeviceProfiles catalog index.</summary>
     public bool ListManufacturerSettings { get; private set; }
+
+    /// <summary>Optional three-letter FLAG ID filter for manufacturer settings.</summary>
+    public string? ManufacturerId { get; private set; }
     /// <summary>List localization packages from the selected catalog.</summary>
     public bool ListLocalization { get; private set; }
     /// <summary>Existing JSON package or ZIP containing JSON packages to update in place.</summary>
@@ -249,6 +252,9 @@ public sealed class GXUpdaterOptions
                 case "--startup-timeout":
                     result.StartupTimeout = int.Parse(Next());
                     break;
+                case "--manufacturer-id":
+                    result.ManufacturerId = Next();
+                    break;
                 case "--list-manufacturer-settings":
                     result.ListManufacturerSettings = true;
                     break;
@@ -320,6 +326,20 @@ public sealed class GXUpdaterOptions
 
                     break;
             }
+        }
+
+        if (result.ManufacturerId is not null)
+        {
+            if (!result.ListManufacturerSettings || result.Command != "check")
+            {
+                throw new ArgumentException("--manufacturer-id requires check --list-manufacturer-settings.");
+            }
+            if (result.ManufacturerId.Length != 3 ||
+                result.ManufacturerId.Any(c => !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))))
+            {
+                throw new ArgumentException("--manufacturer-id must contain exactly three ASCII letters.");
+            }
+            result.ManufacturerId = result.ManufacturerId.ToUpperInvariant();
         }
 
         if (result.PublishPackage != null && !explicitCommand)
@@ -591,7 +611,7 @@ Usage:
   Gurux.Updater [check] --product <id> [--count <n>] [--prerelease] [--json]
   Gurux.Updater check  --application <path> --repository <owner/name> [options]
   Gurux.Updater check  --repository <owner/name> --list-releases [options]
-  Gurux.Updater check  --list-manufacturer-settings [--catalog-url <url>] [--json]
+  Gurux.Updater check  --list-manufacturer-settings [--manufacturer-id <FLAG ID>] [--catalog-url <url>] [--json]
   Gurux.Updater check  --list-localizations [--catalog-url <url>] [--product <id>] [--json]
   Gurux.Updater update --localization <json-or-zip-file> [--catalog-url <url>] [--prerelease] [--json]
   Gurux.Updater check  --targets <targets.json> [options]
@@ -611,6 +631,7 @@ Options:
   --max-concurrency <n>      Maximum parallel checks. Default: 4.
   --asset <pattern>          Release asset pattern, e.g. *win-x64*.zip.
   --list-manufacturer-settings List available profiles (no profile downloads).
+  --manufacturer-id <FLAG ID>  Filter profiles by three-letter manufacturer FLAG ID.
 
   register-module --project <csproj> --modules-root <directory> --catalog-root <directory>
                   [--category <slug>] [--audience <slug>] [--dry-run] [--json]

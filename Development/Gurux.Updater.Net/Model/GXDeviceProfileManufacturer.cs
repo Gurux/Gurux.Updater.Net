@@ -34,6 +34,14 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXDeviceProfileManufacturer
 {
+    /// <summary>
+    /// Gets the optional three-letter FLAG ID of the manufacturer.
+    /// Older indexes may omit this identifier.
+    /// </summary>
+    [JsonPropertyName("id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Id { get; init; }
+
     /// <summary>Gets the optional manufacturer logo.</summary>
     [JsonPropertyName("image")]
     public GXDeviceProfileImage? Image { get; init; }

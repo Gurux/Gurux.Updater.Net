@@ -34,42 +34,38 @@ namespace Gurux.Updater.Tool;
 /// <summary>Lists the public DeviceProfiles index without downloading individual settings.</summary>
 public static class GXManufacturerSettingsCommand
 {
-    private sealed record Setting(string Manufacturer, string Model, string Interface, string Version, string Id, string Name, string Location,
+    private sealed record Setting(string Manufacturer, string Model,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Interface,
+        string Version, string Id, string Name, string Location,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ManufacturerId,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GXDeviceProfileImage? ManufacturerImage,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GXDeviceProfileImage? ModelImage);
-
-    private static GXDeviceProfileImage? ReadImage(JsonElement element) =>
-        element.TryGetProperty("Image", out var image) && image.ValueKind != JsonValueKind.Null
-            ? image.Deserialize<GXDeviceProfileImage>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null;
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GXDeviceProfileImage? ModelImage,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<GXCommunicationProfile>? Profiles);
 
     /// <summary>Fetches the manufacturer index, then writes a table or JSON array of available settings.</summary>
     public static async Task RunAsync(HttpClient client, GXUpdaterOptions options, TextWriter output, CancellationToken cancellationToken = default)
     {
         using var document = await LoadIndexAsync(client, options.CatalogUrl, cancellationToken);
-        var root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("SchemaVersion", out var schema) || !schema.TryGetInt32(out int schemaVersion) || schemaVersion != 2)
-        {
-            throw new InvalidDataException("Unsupported manufacturer index schema. Expected SchemaVersion 2. Specify a manufacturer index or an update catalog containing Gurux.DLMS.DeviceProfiles using --catalog-url <url>.");
-        }
+        var index = document.RootElement.Deserialize<GXDeviceProfileIndex>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            ?? throw new InvalidDataException("Manufacturer index is empty.");
+        // Use the same schema, identity, connection and integrity validation as library callers.
+        _ = new GXDeviceProfileUpdateService(client).GetProfiles(index);
 
         var settings = new List<Setting>();
-        foreach (var manufacturer in root.GetProperty("Manufacturers").EnumerateArray())
+        foreach (var manufacturer in index.Manufacturers)
         {
-            foreach (var model in manufacturer.GetProperty("Models").EnumerateArray())
+            if (options.ManufacturerId is not null &&
+                !string.Equals(manufacturer.Id, options.ManufacturerId, StringComparison.OrdinalIgnoreCase))
             {
-                foreach (var connection in model.GetProperty("Interfaces").EnumerateArray())
+                continue;
+            }
+            foreach (var model in manufacturer.Models)
+            {
+                foreach (var (connection, version, setting) in EnumerateSettings(model, index.SchemaVersion))
                 {
-                    foreach (var version in connection.GetProperty("Versions").EnumerateArray())
-                    {
-                        foreach (var setting in version.GetProperty("Settings").EnumerateArray())
-                        {
-                            settings.Add(new(manufacturer.GetProperty("Name").GetString()!, model.GetProperty("Name").GetString()!,
-                                connection.GetProperty("Name").GetString()!, version.GetProperty("Name").GetString()!,
-                                setting.GetProperty("Id").GetString()!, setting.GetProperty("Name").GetString()!, setting.GetProperty("Location").GetString()!,
-                                ReadImage(manufacturer), ReadImage(model)));
-                        }
-                    }
+                    settings.Add(new(manufacturer.Name, model.Name, connection, version,
+                        setting.Id, setting.Name, setting.Location, manufacturer.Id, manufacturer.Image, model.Image,
+                        index.SchemaVersion == 3 ? setting.Profiles : null));
                 }
             }
         }
@@ -82,17 +78,53 @@ public static class GXManufacturerSettingsCommand
         await output.WriteLineAsync("Manufacturer | Model | Interface | Version | Setting");
         foreach (var item in settings)
         {
-            await output.WriteLineAsync($"{item.Manufacturer} | {item.Model} | {item.Interface} | {item.Version} | {item.Name}");
+            string manufacturer = string.IsNullOrEmpty(item.ManufacturerId)
+                ? item.Manufacturer : $"{item.Manufacturer} ({item.ManufacturerId})";
+            string connection = item.Interface ?? string.Join(", ", item.Profiles?.Select(p => p.InterfaceType) ?? []);
+            await output.WriteLineAsync($"{manufacturer} | {item.Model} | {connection} | {item.Version} | {item.Name}");
         }
 
         await output.WriteLineAsync($"{settings.Count} settings.");
+    }
+
+    private static IEnumerable<(string? Interface, string Version, GXDeviceProfileEntry Entry)> EnumerateSettings(
+        GXDeviceProfileModel model, int schemaVersion)
+    {
+        if (schemaVersion == 2)
+        {
+            foreach (var connection in model.Interfaces)
+            {
+                foreach (var version in connection.Versions)
+                {
+                    foreach (var entry in version.Settings)
+                    {
+                        yield return (connection.Name, version.Name, entry);
+                    }
+                }
+            }
+            yield break;
+        }
+        if (schemaVersion == 1)
+        {
+            foreach (var entry in model.Settings)
+            {
+                yield return (null, string.Empty, entry);
+            }
+        }
+        foreach (var version in model.Versions)
+        {
+            foreach (var entry in version.Settings)
+            {
+                yield return (null, version.Name, entry);
+            }
+        }
     }
 
     private static async Task<JsonDocument> LoadIndexAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
     {
         var document = await LoadDocumentAsync(client, uri, cancellationToken);
         if (document.RootElement.ValueKind != JsonValueKind.Object ||
-            !document.RootElement.TryGetProperty("schemaVersion", out _))
+            !(document.RootElement.TryGetProperty("items", out _) || document.RootElement.TryGetProperty("Items", out _)))
         {
             return document;
         }

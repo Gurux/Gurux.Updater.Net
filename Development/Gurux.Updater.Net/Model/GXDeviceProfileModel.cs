@@ -55,7 +55,7 @@ public sealed class GXDeviceProfileModel
     [JsonPropertyName("settings")]
     public List<GXDeviceProfileEntry> Settings { get; init; } = [];
     /// <summary>
-    /// Gets the device versions or variants for this model.
+    /// Gets the device versions or variants for this model. Schema 3 uses an empty name for the model default.
     /// Each version maintains its own independent profile list.
     /// </summary>
     [JsonPropertyName("versions")]

@@ -35,6 +35,10 @@ namespace Gurux.Updater.Model;
 /// </summary>
 public sealed class GXDeviceProfileEntry
 {
+    /// <summary>Gets the connection alternatives for this setting in schema 3. Apply the selected connection after loading the profile.</summary>
+    [JsonPropertyName("profiles")]
+    public List<GXCommunicationProfile> Profiles { get; init; } = [];
+
     /// <summary>Gets the profile serialization format: json (default) or xml.</summary>
     [JsonPropertyName("format")]
     public string Format { get; init; } = "json";
